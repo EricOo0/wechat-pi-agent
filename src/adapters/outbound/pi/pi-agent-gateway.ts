@@ -1,0 +1,212 @@
+import { mkdir, readFile } from "node:fs/promises";
+import type { ImageContent } from "@earendil-works/pi-ai";
+import type { AgentSession, AgentSessionEvent, CreateAgentSessionOptions, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader, getAgentDir, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import type { AgentPort, AgentRunRequest, AgentRunResult } from "../../../application/ports/agent.port.js";
+import type { AgentEvent } from "../../../domain/execution/step.js";
+import type { InboundImage } from "../../../domain/messaging/inbound-message.js";
+import { loadSystemPrompt } from "./system-prompt.js";
+import { createAgentTools } from "./tools/index.js";
+
+export interface PiAgentGatewayOptions {
+  cwd: string;
+  provider: string;
+  modelId: string;
+  thinkingLevel?: CreateAgentSessionOptions["thinkingLevel"];
+  authPath?: string;
+  modelsPath?: string;
+  modelsStorePath?: string;
+  sessionDir: string;
+  systemPromptPath: string;
+  loadLocalSkills: boolean;
+  toolSandboxRoot: string;
+  httpToolEnabled: boolean;
+  httpAllowedHosts: string[];
+  shellToolEnabled: boolean;
+  allowModelNetwork?: boolean;
+}
+
+interface SessionHandle {
+  session: AgentSession;
+  manager: SessionManager;
+}
+
+export class PiAgentGateway implements AgentPort {
+  private readonly sessions = new Map<string, SessionHandle>();
+
+  private constructor(
+    private readonly options: PiAgentGatewayOptions,
+    private readonly runtime: ModelRuntime,
+    private readonly resourceLoader: DefaultResourceLoader,
+    private readonly customTools: ToolDefinition[],
+    private readonly activeToolNames: string[],
+  ) {}
+
+  public static async create(options: PiAgentGatewayOptions): Promise<PiAgentGateway> {
+    await mkdir(options.sessionDir, { recursive: true });
+    const [runtime, systemPrompt] = await Promise.all([
+      ModelRuntime.create({
+        ...(options.authPath === undefined ? {} : { authPath: options.authPath }),
+        ...(options.modelsPath === undefined ? {} : { modelsPath: options.modelsPath }),
+        ...(options.modelsStorePath === undefined ? {} : { modelsStorePath: options.modelsStorePath }),
+        allowModelNetwork: options.allowModelNetwork ?? false,
+        refreshOnCreate: true,
+      }),
+      loadSystemPrompt(options.systemPromptPath),
+    ]);
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: options.cwd,
+      agentDir: getAgentDir(),
+      systemPrompt,
+      noExtensions: true,
+      noSkills: !options.loadLocalSkills,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+    });
+    await resourceLoader.reload();
+    const skillRoots = resourceLoader.getSkills().skills.map((skill) => skill.baseDir);
+    const customTools = await createAgentTools({
+      sandboxRoot: options.toolSandboxRoot,
+      skillRoots,
+      httpEnabled: options.httpToolEnabled,
+      httpAllowedHosts: options.httpAllowedHosts,
+    });
+    const activeToolNames = [
+      ...customTools.map((tool) => tool.name),
+      ...(options.shellToolEnabled ? ["bash"] : []),
+    ];
+    return new PiAgentGateway(options, runtime, resourceLoader, customTools, activeToolNames);
+  }
+
+  public async runTurn(request: AgentRunRequest): Promise<AgentRunResult> {
+    const handle = await this.getOrCreateSession(request);
+    request.onInvocation?.({
+      systemPrompt: handle.session.systemPrompt,
+      provider: this.options.provider,
+      modelId: this.options.modelId,
+      skills: this.resourceLoader.getSkills().skills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        filePath: skill.filePath,
+      })),
+      tools: handle.session.getActiveToolNames(),
+    });
+    const unsubscribe = handle.session.subscribe((event) => {
+      request.onEvent?.(this.mapEvent(event));
+    });
+    const onAbort = () => { void handle.session.abort(); };
+    request.signal?.addEventListener("abort", onAbort, { once: true });
+    try {
+      if (request.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const images = await this.loadImages(request.images ?? []);
+      if (images.length > 0 && !handle.session.model?.input.includes("image")) {
+        throw new Error(`Pi model does not support image input: ${this.options.provider}/${this.options.modelId}`);
+      }
+      await handle.session.prompt(request.prompt, images.length === 0 ? undefined : { images });
+      const text = handle.session.getLastAssistantText()?.trim();
+      if (!text) throw new Error("Pi completed without assistant text");
+      const piSessionFile = handle.manager.getSessionFile();
+      return {
+        text,
+        piSessionId: handle.manager.getSessionId(),
+        ...(piSessionFile === undefined ? {} : { piSessionFile }),
+      };
+    } finally {
+      request.signal?.removeEventListener("abort", onAbort);
+      unsubscribe();
+    }
+  }
+
+  public async checkReady(): Promise<{ ready: boolean; reason?: string }> {
+    const model = this.runtime.getModel(this.options.provider, this.options.modelId);
+    if (!model) return { ready: false, reason: "pi_model_not_found" };
+    try {
+      const auth = await this.runtime.checkAuth(this.options.provider);
+      return auth === undefined
+        ? { ready: false, reason: "pi_auth_missing" }
+        : { ready: true };
+    } catch {
+      return { ready: false, reason: "pi_auth_check_failed" };
+    }
+  }
+
+  public dispose(): void {
+    for (const handle of this.sessions.values()) handle.session.dispose();
+    this.sessions.clear();
+  }
+
+  private async getOrCreateSession(request: AgentRunRequest): Promise<SessionHandle> {
+    const existing = this.sessions.get(request.session.id);
+    if (existing !== undefined) return existing;
+    const manager = request.session.piSessionFile
+      ? SessionManager.open(request.session.piSessionFile, this.options.sessionDir, this.options.cwd)
+      : SessionManager.create(this.options.cwd, this.options.sessionDir);
+    const model = this.runtime.getModel(this.options.provider, this.options.modelId);
+    if (!model) throw new Error(`Pi model not found: ${this.options.provider}/${this.options.modelId}`);
+    const { session } = await createAgentSession({
+      cwd: this.options.cwd,
+      model,
+      modelRuntime: this.runtime,
+      sessionManager: manager,
+      resourceLoader: this.resourceLoader,
+      tools: this.activeToolNames,
+      customTools: this.customTools,
+      thinkingLevel: this.options.thinkingLevel ?? "medium",
+    });
+    const unexpected = session.getActiveToolNames().filter((name) => !this.activeToolNames.includes(name));
+    if (unexpected.length > 0) {
+      session.dispose();
+      throw new Error(`Pi tool policy violation: unexpected tools enabled (${unexpected.join(", ")})`);
+    }
+    const handle = { session, manager };
+    this.sessions.set(request.session.id, handle);
+    return handle;
+  }
+
+  private async loadImages(images: readonly InboundImage[]): Promise<ImageContent[]> {
+    return Promise.all(images.map(async (image) => {
+      const data = await readFile(image.path);
+      if (data.length !== image.bytes) throw new Error(`Inbound image size changed after download: ${image.path}`);
+      return { type: "image" as const, data: data.toString("base64"), mimeType: image.mimeType };
+    }));
+  }
+
+  private mapEvent(event: AgentSessionEvent): AgentEvent {
+    const data: Record<string, unknown> = {};
+    if (event.type === "agent_end") data.willRetry = event.willRetry;
+    if (event.type === "auto_retry_start") {
+      data.attempt = event.attempt;
+      data.maxAttempts = event.maxAttempts;
+      data.delayMs = event.delayMs;
+    }
+    if (event.type === "tool_execution_start") {
+      data.toolCallId = event.toolCallId;
+      data.toolName = event.toolName;
+      data.args = this.traceValue(event.args as unknown);
+    }
+    if (event.type === "tool_execution_update") {
+      data.toolCallId = event.toolCallId;
+      data.toolName = event.toolName;
+      data.partialResult = this.traceValue(event.partialResult as unknown);
+    }
+    if (event.type === "tool_execution_end") {
+      data.toolCallId = event.toolCallId;
+      data.toolName = event.toolName;
+      data.isError = event.isError;
+      data.result = this.traceValue(event.result as unknown);
+    }
+    if (event.type === "message_update") data.messageEventType = event.assistantMessageEvent.type;
+    return { type: event.type, at: new Date(), ...(Object.keys(data).length === 0 ? {} : { data }) };
+  }
+
+  private traceValue(value: unknown): unknown {
+    try {
+      const serialized = JSON.stringify(value);
+      if (serialized.length <= 8_192) return value;
+      return { truncated: true, preview: serialized.slice(0, 8_192), originalCharacters: serialized.length };
+    } catch {
+      return { unserializable: true };
+    }
+  }
+}

@@ -1,0 +1,76 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Script } from "node:vm";
+import pino from "pino";
+import { afterEach, describe, expect, it } from "vitest";
+import { AdminServer } from "../../src/adapters/inbound/admin-http/server.js";
+import { RuntimeHealth } from "../../src/adapters/inbound/admin-http/runtime-health.js";
+import { DryRunChannel } from "../../src/adapters/outbound/ilink/dry-run-channel.js";
+import { PrometheusTelemetry } from "../../src/adapters/outbound/observability/metrics.js";
+import { DryRunAgent } from "../../src/adapters/outbound/pi/dry-run-agent.js";
+import { SqliteControlPlane } from "../../src/adapters/outbound/sqlite/sqlite-control-plane.js";
+
+const cleanup: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  await Promise.all(cleanup.splice(0).map((operation) => operation()));
+});
+
+describe("Admin trace UI", () => {
+  it("serves the trace page, list API, and full System Prompt snapshot", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "wechat-admin-trace-"));
+    const control = new SqliteControlPlane(join(directory, "app.db"));
+    control.migrate();
+    control.ingestBatch({
+      accountId: "bot",
+      previousCursor: "",
+      nextCursor: "cursor",
+      messages: [{
+        id: "message",
+        accountId: "bot",
+        channelMessageId: "remote",
+        peerId: "user",
+        senderId: "user",
+        text: "hello trace",
+        receivedAt: new Date(),
+      }],
+    });
+    const claimed = control.claimNextTurn("worker", 30_000);
+    if (claimed === undefined) throw new Error("turn was not claimed");
+    control.recordAgentInvocation(claimed.turn.id, {
+      provider: "openai-codex",
+      modelId: "gpt-test",
+      systemPrompt: "actual system prompt",
+      skills: [],
+      tools: ["read"],
+    });
+    const server = new AdminServer({
+      host: "127.0.0.1",
+      port: 0,
+      control,
+      channel: new DryRunChannel(),
+      agent: new DryRunAgent(),
+      health: new RuntimeHealth(),
+      telemetry: new PrometheusTelemetry(false),
+      logger: pino({ enabled: false }),
+    });
+    await server.start();
+    cleanup.push(async () => { await server.close(); control.close(); await rm(directory, { recursive: true, force: true }); });
+    const port = server.getPort();
+    if (port === undefined) throw new Error("admin port unavailable");
+
+    const page = await fetch(`http://127.0.0.1:${port}/admin`);
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain("System Prompt");
+    const script = /<script>([\s\S]*)<\/script>/u.exec(html)?.[1];
+    if (script === undefined) throw new Error("admin page script not found");
+    expect(() => new Script(script)).not.toThrow();
+
+    const list = await fetch(`http://127.0.0.1:${port}/debug/traces?limit=100`).then(async (response) => response.json()) as Array<{ turnId: string }>;
+    expect(list).toEqual([expect.objectContaining({ turnId: claimed.turn.id })]);
+
+    const details = await fetch(`http://127.0.0.1:${port}/debug/traces/${claimed.turn.id}`).then(async (response) => response.json()) as { trace: { systemPrompt: string } };
+    expect(details.trace.systemPrompt).toBe("actual system prompt");
+  });
+});

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+.env
+data/
+*.log
+.DS_Store
+.playwright-cli/
+output/playwright/*.png
+
+# IDE
+.idea/
+
+# 无关/隐私文件（非本项目内容）
+main.go
+社招复盘_2026.html

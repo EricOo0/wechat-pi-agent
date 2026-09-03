@@ -1,0 +1,24 @@
+import type { ChannelPort } from "../../../application/ports/channel.port.js";
+import type { InboundBatch } from "../../../domain/messaging/inbound-message.js";
+import type { OutboundMessage } from "../../../domain/messaging/outbound-message.js";
+
+export class DryRunChannel implements ChannelPort {
+  public readonly sent: OutboundMessage[] = [];
+
+  public async getUpdates(accountId: string, cursor: string, signal: AbortSignal): Promise<InboundBatch> {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 1000);
+      signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+    return { accountId, previousCursor: cursor, nextCursor: cursor, messages: [] };
+  }
+
+  public sendText(message: OutboundMessage): Promise<{ remoteRequestId: string }> {
+    this.sent.push(message);
+    return Promise.resolve({ remoteRequestId: `dry_${message.clientId}` });
+  }
+
+  public checkReady(): Promise<{ ready: boolean }> {
+    return Promise.resolve({ ready: true });
+  }
+}

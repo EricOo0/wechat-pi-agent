@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>WeChat × iLink × Pi Agent MVP 技术方案</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23176b5b'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='38' fill='white'%3Eπ%3C/text%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: rgba(255,255,255,.92);
+      --panel-2: #f8fafc;
+      --text: #172033;
+      --muted: #667085;
+      --line: #dfe6ee;
+      --brand: #176b5b;
+      --brand-2: #22a06b;
+      --blue: #2867d7;
+      --orange: #c45d18;
+      --red: #bb2d3b;
+      --purple: #7a4bd4;
+      --shadow: 0 18px 50px rgba(33, 52, 72, .09);
+      --radius: 16px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1521;
+        --panel: rgba(20, 31, 47, .94);
+        --panel-2: #111d2c;
+        --text: #e7edf5;
+        --muted: #9bacbf;
+        --line: #2a3a4e;
+        --brand: #55c7a5;
+        --brand-2: #43d69b;
+        --blue: #79a8ff;
+        --orange: #f1a66c;
+        --red: #ff8390;
+        --purple: #b69aff;
+        --shadow: 0 18px 50px rgba(0,0,0,.28);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.66; }
+    body::before {
+      content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(34,160,107,.13), transparent 30%),
+        radial-gradient(circle at 95% 15%, rgba(40,103,215,.10), transparent 25%);
+    }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, pre { font-family: var(--mono); }
+    code { background: color-mix(in srgb, var(--blue) 9%, transparent); padding: .13em .38em; border-radius: 6px; font-size: .92em; }
+    pre { overflow: auto; background: #101827; color: #e8eef6; border-radius: 12px; padding: 16px 18px; line-height: 1.55; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+    pre code { padding: 0; background: none; color: inherit; }
+    .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); max-width: 1460px; margin: 0 auto; }
+    aside { position: sticky; top: 0; height: 100vh; padding: 30px 18px 24px; border-right: 1px solid var(--line); overflow: auto; }
+    .logo { display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:-.02em; margin: 0 8px 26px; }
+    .logo-mark { width:36px; height:36px; border-radius:11px; display:grid; place-items:center; color:#fff; background: linear-gradient(135deg, #1f8e73, #2867d7); box-shadow: 0 8px 18px rgba(31,142,115,.25); }
+    nav a { display:block; color:var(--muted); padding:7px 10px; border-radius:9px; font-size:14px; margin:2px 0; }
+    nav a:hover { background: color-mix(in srgb, var(--brand) 9%, transparent); color:var(--brand); text-decoration:none; }
+    nav .group { font-size:11px; letter-spacing:.11em; text-transform:uppercase; color:var(--muted); margin:18px 10px 7px; opacity:.8; }
+    main { min-width:0; padding: 42px clamp(24px, 5vw, 76px) 80px; }
+    .hero { padding: clamp(28px, 5vw, 56px); border:1px solid var(--line); border-radius:24px; background:var(--panel); box-shadow:var(--shadow); overflow:hidden; position:relative; }
+    .hero::after { content:""; position:absolute; width:320px; height:320px; border-radius:50%; right:-120px; top:-150px; background:linear-gradient(135deg, rgba(34,160,107,.22), rgba(40,103,215,.15)); filter:blur(5px); }
+    .eyebrow { display:inline-flex; gap:8px; align-items:center; color:var(--brand); font-weight:750; font-size:13px; letter-spacing:.08em; text-transform:uppercase; }
+    h1 { margin:12px 0 16px; max-width:900px; font-size:clamp(34px, 5vw, 64px); line-height:1.07; letter-spacing:-.045em; }
+    .lead { max-width:900px; font-size:clamp(17px, 2vw, 21px); color:var(--muted); margin:0; }
+    .meta { display:flex; gap:10px; flex-wrap:wrap; margin-top:26px; }
+    .badge { display:inline-flex; align-items:center; gap:7px; padding:7px 11px; border-radius:999px; border:1px solid var(--line); background:var(--panel-2); color:var(--muted); font-size:13px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--brand-2); }
+    section { scroll-margin-top:24px; margin-top:54px; }
+    h2 { font-size:clamp(25px, 3vw, 36px); line-height:1.2; letter-spacing:-.03em; margin:0 0 18px; }
+    h3 { font-size:20px; margin:28px 0 12px; letter-spacing:-.015em; }
+    h4 { font-size:16px; margin:20px 0 8px; }
+    .sub { color:var(--muted); margin-top:-8px; max-width:880px; }
+    .grid { display:grid; gap:16px; }
+    .g2 { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .g3 { grid-template-columns:repeat(3, minmax(0,1fr)); }
+    .g4 { grid-template-columns:repeat(4, minmax(0,1fr)); }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:20px; box-shadow:0 8px 24px rgba(35,50,68,.04); }
+    .card h3, .card h4 { margin-top:0; }
+    .card p:last-child, .card ul:last-child { margin-bottom:0; }
+    .metric { font-size:29px; font-weight:800; letter-spacing:-.04em; color:var(--brand); }
+    .label { color:var(--muted); font-size:13px; }
+    .callout { border-left:4px solid var(--blue); background:color-mix(in srgb, var(--blue) 7%, var(--panel)); padding:16px 18px; border-radius:10px; margin:18px 0; }
+    .callout.warn { border-color:var(--orange); background:color-mix(in srgb, var(--orange) 8%, var(--panel)); }
+    .callout.danger { border-color:var(--red); background:color-mix(in srgb, var(--red) 7%, var(--panel)); }
+    .callout.success { border-color:var(--brand-2); background:color-mix(in srgb, var(--brand-2) 7%, var(--panel)); }
+    .decision { display:grid; grid-template-columns:28px 1fr; gap:11px; align-items:start; margin:12px 0; }
+    .decision b:first-child { width:25px; height:25px; border-radius:7px; display:grid; place-items:center; color:#fff; background:var(--brand); font-size:13px; }
+    .arch { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:22px; overflow:auto; }
+    .flow { display:flex; align-items:stretch; gap:10px; min-width:1000px; }
+    .node { flex:1; min-width:130px; border:1px solid var(--line); background:var(--panel-2); border-radius:13px; padding:14px; text-align:center; }
+    .node strong { display:block; margin-bottom:5px; }
+    .node small { color:var(--muted); display:block; }
+    .arrow { align-self:center; color:var(--muted); font-size:22px; }
+    .layer { margin-top:14px; padding:13px; border-radius:12px; border:1px dashed var(--line); color:var(--muted); text-align:center; }
+    .arch-stack { min-width:860px; display:grid; gap:10px; }
+    .arch-band { display:grid; grid-template-columns:135px minmax(0,1fr); gap:9px; align-items:stretch; }
+    .arch-band-label { display:flex; align-items:center; justify-content:center; text-align:center; padding:12px; border-radius:12px; color:#fff; font-weight:800; background:linear-gradient(135deg, var(--brand), var(--blue)); }
+    .arch-band-body { display:flex; align-items:stretch; gap:6px; padding:10px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2); }
+    .arch-band-body .node { min-width:0; padding:10px 7px; display:flex; flex-direction:column; justify-content:center; background:var(--panel); }
+    .arch-band-body .arrow { display:grid; place-items:center; min-width:14px; }
+    .arch-down { margin-left:135px; text-align:center; color:var(--muted); font-family:var(--mono); font-size:12px; line-height:1.25; }
+    .arch-note { margin-top:12px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; min-width:860px; }
+    .arch-note > div { padding:12px 14px; border:1px dashed var(--line); border-radius:11px; background:var(--panel-2); color:var(--muted); }
+    table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; display:table; }
+    th, td { text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.06em; background:var(--panel-2); }
+    tr:last-child td { border-bottom:0; }
+    .table-wrap { overflow:auto; border-radius:14px; }
+    .table-wrap table { min-width:760px; }
+    .state { display:inline-block; padding:3px 8px; border-radius:999px; font-size:12px; font-family:var(--mono); background:color-mix(in srgb, var(--purple) 10%, transparent); color:var(--purple); }
+    .timeline { position:relative; padding-left:25px; }
+    .timeline::before { content:""; position:absolute; left:7px; top:8px; bottom:8px; width:2px; background:var(--line); }
+    .timeline-item { position:relative; margin:0 0 20px; }
+    .timeline-item::before { content:""; position:absolute; left:-24px; top:7px; width:12px; height:12px; border-radius:50%; background:var(--brand-2); box-shadow:0 0 0 4px var(--bg); }
+    details { border:1px solid var(--line); border-radius:12px; background:var(--panel); margin:10px 0; }
+    summary { cursor:pointer; padding:13px 16px; font-weight:700; }
+    details > div { padding:0 16px 16px; }
+    ul.tight li { margin:4px 0; }
+    .k { color:var(--purple); }
+    .s { color:#58b994; }
+    .c { color:#8995a7; }
+    .footer { margin-top:60px; padding-top:24px; border-top:1px solid var(--line); color:var(--muted); font-size:13px; }
+    @media (max-width: 1040px) { .g4 { grid-template-columns:repeat(2, minmax(0,1fr)); } .g3 { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+    @media (max-width: 800px) { .layout { display:block; } aside { display:none; } main { padding:20px 15px 60px; } .hero { border-radius:18px; } .g2,.g3,.g4 { grid-template-columns:1fr; } section { margin-top:42px; } }
+    @media print { aside { display:none; } .layout { display:block; } main { padding:0; } body { background:#fff; color:#111; } .hero,.card,.arch,table,details { box-shadow:none; break-inside:avoid; } a { color:#111; } }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="logo"><span class="logo-mark">π</span><span>WeChat Pi Agent</span></div>
+    <nav>
+      <div class="group">Overview</div>
+      <a href="#architecture">系统架构总览</a>
+      <a href="#summary">关键决策</a>
+      <a href="#scope">目标与边界</a>
+      <a href="#sequence">核心时序</a>
+      <div class="group">Runtime</div>
+      <a href="#pi">Pi 与 Codex</a>
+      <a href="#ilink">iLink 接入</a>
+      <a href="#lifecycle">Session / Turn / Step</a>
+      <a href="#storage">持久化设计</a>
+      <div class="group">Operations</div>
+      <a href="#observability">日志与可观测性</a>
+      <a href="#security">安全边界</a>
+      <a href="#recovery">幂等与故障恢复</a>
+      <a href="#structure">工程结构</a>
+      <a href="#roadmap">实施计划</a>
+      <a href="#acceptance">验收标准</a>
+      <a href="#risks">风险与待确认项</a>
+      <a href="#sources">参考资料</a>
+    </nav>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <div class="eyebrow"><span class="dot"></span>MVP Technical Proposal · TypeScript</div>
+      <h1>微信 iLink × Pi SDK × Codex 订阅</h1>
+      <p class="lead">一个本机运行、单微信用户、文本回复并支持图片理解的 Agent MVP。腾讯 iLink 负责微信收发；运行时以 Pi SDK 方式组合 <code>pi-coding-agent</code>、<code>pi-agent-core</code> 与 <code>pi-ai</code>，不拉起 CLI 子进程；首次启动直接通过 <code>ModelRuntime.login()</code> 完成 Codex OAuth 和模型绑定。</p>
+      <div class="meta">
+        <span class="badge">版本 v0.1 方案</span>
+        <span class="badge">部署：本机单用户</span>
+        <span class="badge">运行时：Node.js ≥ 22.19</span>
+        <span class="badge">存储：SQLite + Pi JSONL</span>
+        <span class="badge">受限工具：Skill 只读 · 沙箱写入 · 公网 HTTPS</span>
+      </div>
+    </header>
+
+    <section id="architecture">
+      <h2>1. 系统架构总览</h2>
+      <p class="sub">先给出完整边界：这是一个单进程、模块化单体。业务层只依赖端口，不依赖 iLink、Pi、SQLite 等具体技术；Pi 是进程内 SDK 依赖，CLI 不在消息处理链路中。</p>
+      <div class="arch">
+        <div class="arch-stack">
+          <div class="arch-band">
+            <div class="arch-band-label">外部系统</div>
+            <div class="arch-band-body">
+              <div class="node"><strong>微信用户</strong><small>私聊文本 / 命令</small></div><div class="arrow">⇄</div>
+              <div class="node"><strong>Tencent iLink</strong><small>QR · getUpdates · sendMessage</small></div><div class="arrow">⇄</div>
+              <div class="node"><strong>OpenAI Codex</strong><small>ChatGPT Plus/Pro OAuth</small></div>
+            </div>
+          </div>
+          <div class="arch-down">↓ 入站更新　　　　　　　　　　　　　　　　　　　　　　　　　　　　↑ provider 请求 / 流式响应</div>
+          <div class="arch-band">
+            <div class="arch-band-label">Inbound Adapters</div>
+            <div class="arch-band-body">
+              <div class="node"><strong>iLink Poller</strong><small>长轮询、游标、协议校验</small></div><div class="arrow">→</div>
+              <div class="node"><strong>Message Mapper</strong><small>转 InboundEnvelope</small></div><div class="arrow">→</div>
+              <div class="node"><strong>Command Router</strong><small>/new · /status · /cancel</small></div>
+              <div class="node"><strong>Admin HTTP</strong><small>health · metrics · Trace Tab</small></div>
+            </div>
+          </div>
+          <div class="arch-down">↓ 调用 Application Use Case（端口边界）</div>
+          <div class="arch-band">
+            <div class="arch-band-label">Application</div>
+            <div class="arch-band-body">
+              <div class="node"><strong>IngestMessage</strong><small>去重入库 + 推进 cursor</small></div><div class="arrow">→</div>
+              <div class="node"><strong>RunTurn</strong><small>Session FIFO + 状态机</small></div><div class="arrow">→</div>
+              <div class="node"><strong>DeliverReply</strong><small>分片 + outbox + retry</small></div>
+              <div class="node"><strong>RecoverWork</strong><small>启动恢复 + lease</small></div>
+            </div>
+          </div>
+          <div class="arch-down">↓ 只操作领域对象与 Ports</div>
+          <div class="arch-band">
+            <div class="arch-band-label">Domain</div>
+            <div class="arch-band-body">
+              <div class="node"><strong>Messaging</strong><small>Envelope · MessageId</small></div>
+              <div class="node"><strong>Conversation</strong><small>Session · SessionKey</small></div>
+              <div class="node"><strong>Execution</strong><small>Turn · Step · 状态迁移</small></div>
+              <div class="node"><strong>Delivery</strong><small>Outbox · Attempt · 幂等</small></div>
+              <div class="node"><strong>Policy</strong><small>Sender allowlist · ToolPolicy</small></div>
+            </div>
+          </div>
+          <div class="arch-down">↑ 实现 Ports；依赖方向始终指向 Domain / Application</div>
+          <div class="arch-band">
+            <div class="arch-band-label">Outbound Adapters</div>
+            <div class="arch-band-body">
+              <div class="node"><strong>PiAgentGateway</strong><small>应用侧唯一 AgentPort 实现</small></div><div class="arrow">→</div>
+              <div class="node"><strong>pi-coding-agent SDK</strong><small>AgentSession · JSONL · events</small></div><div class="arrow">→</div>
+              <div class="node"><strong>pi-agent-core</strong><small>Agent loop · tool loop</small></div><div class="arrow">→</div>
+              <div class="node"><strong>pi-ai</strong><small>model catalog · provider API</small></div><div class="arrow">→</div>
+              <div class="node"><strong>openai-codex</strong><small>具体 Provider</small></div>
+            </div>
+          </div>
+          <div class="arch-band">
+            <div class="arch-band-label">Infrastructure</div>
+            <div class="arch-band-body">
+              <div class="node"><strong>SQLite</strong><small>inbox · turn · step · outbox</small></div>
+              <div class="node"><strong>Pi JSONL</strong><small>Agent 原生消息树</small></div>
+              <div class="node"><strong>Credential Store</strong><small>auth.json / Keychain / 0600</small></div>
+              <div class="node"><strong>Observability</strong><small>Pino · metrics · OTel</small></div>
+              <div class="node"><strong>iLink Sender</strong><small>sendMessage · typing</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="arch-note">
+          <div><strong>请求主链：</strong>iLink Poller → IngestMessage → SQLite inbox → RunTurn → AgentPort → Pi SDK → Codex。</div>
+          <div><strong>回复主链：</strong>Pi event/final text → DeliverReply → SQLite outbox → iLink Sender → 微信用户。</div>
+          <div><strong>恢复依据：</strong>SQLite 管业务执行；Pi JSONL 管模型上下文；二者只用 <code>pi_session_id</code> / locator 关联。</div>
+        </div>
+      </div>
+
+      <h3>1.1 最重要的技术选择：用 Pi SDK，不用 Pi CLI 承载运行时</h3>
+      <div class="grid g3">
+        <div class="card"><h3><code>pi-ai</code></h3><p><strong>Provider 层。</strong>统一模型类型、catalog、流式调用与各 Provider 协议；<code>openai-codex</code> 就在这一层。业务代码不直接拼 OpenAI 请求。</p></div>
+        <div class="card"><h3><code>pi-agent-core</code></h3><p><strong>Agent 循环层。</strong>处理模型调用、消息、tool call 和多轮循环；它位于 <code>pi-ai</code> 之上。</p></div>
+        <div class="card"><h3><code>pi-coding-agent</code> SDK</h3><p><strong>Harness / Session 层。</strong>提供 <code>createAgentSession()</code>、<code>SessionManager</code>、<code>ModelRuntime</code> 和事件；这是包内 SDK，不等于启动 <code>pi</code> 命令。</p></div>
+      </div>
+      <div class="callout success"><strong>结论：</strong>你的理解是对的：各种模型 Provider 的统一接入核心在 <code>@earendil-works/pi-ai</code>。本服务在进程内使用 Pi SDK；不通过 stdin/stdout 驱动 CLI，也不把 CLI 当常驻或首次登录入口。首次启动由 <code>ModelRuntime.login(provider, "oauth", interaction)</code> 打开浏览器完成 OAuth，再通过 Provider catalog 获取可用模型并保存用户选择；会话运行仍由 <code>pi-coding-agent</code> SDK 组合 <code>pi-agent-core + pi-ai</code>。</div>
+
+      <h3>1.2 组件职责与所有权</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>组件</th><th>拥有的数据 / 规则</th><th>明确不负责</th></tr></thead>
+        <tbody>
+          <tr><td>iLink Adapter</td><td>协议 DTO、header、cursor、context token、重试分类</td><td>不决定 Turn 状态，不感知 Pi 类型</td></tr>
+          <tr><td>Application Use Cases</td><td>处理顺序、事务边界、FIFO、恢复、端口调用</td><td>不直接发 HTTP，不解析 Provider 响应</td></tr>
+          <tr><td>Domain</td><td>Session / Turn / Step / Outbox 实体、状态迁移与不变量</td><td>不 import Pi、SQLite、Pino、HTTP SDK</td></tr>
+          <tr><td>PiAgentGateway</td><td>业务 Turn 与 Pi AgentSession 的映射、事件翻译、最终文本</td><td>不拥有业务去重、outbox 或 iLink token</td></tr>
+          <tr><td>SQLite Repositories</td><td>业务状态持久化、唯一约束、claim / lease</td><td>不解析或修改 Pi JSONL</td></tr>
+          <tr><td>Pi SessionManager</td><td>Pi 原生消息树、compaction、model/tool messages</td><td>不作为业务 Turn 状态的唯一事实源</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="summary">
+      <h2>2. 关键决策摘要</h2>
+      <p class="sub">方案优先验证“微信消息能可靠地进入 Pi、由 Codex 订阅模型处理、再可靠回复微信”，并从第一天保留可定位问题的执行链路。</p>
+      <div class="grid g4">
+        <div class="card"><div class="metric">1</div><div class="label">单进程模块化单体</div><p>避免早期微服务复杂度，同时保持边界可拆分。</p></div>
+        <div class="card"><div class="metric">FIFO</div><div class="label">每个会话串行执行</div><p>避免同一 Pi Session 并发写入和上下文竞态。</p></div>
+        <div class="card"><div class="metric">2 层</div><div class="label">SQLite + Pi JSONL</div><p>业务执行索引与 Agent 原生会话分别持久化。</p></div>
+        <div class="card"><div class="metric">E2E</div><div class="label">全链路关联 ID</div><p>从 iLink message_id 一路追到 Pi step 和回复 client_id。</p></div>
+      </div>
+      <div class="callout success"><strong>推荐结论：</strong>Provider 接入使用 <code>pi-ai</code>，Agent loop 使用 <code>pi-agent-core</code>，会话与 harness 使用 <code>pi-coding-agent</code> SDK。首次启动也不依赖 Pi CLI：应用直接调用 SDK OAuth、发现 Provider 可用模型并保存绑定；后续由同一 SDK 读取和刷新受保护的 <code>auth.json</code>。</div>
+      <div class="callout warn"><strong>两个强制 Spike Gate：</strong>编码前先验证 ① 当前账号可脱离 OpenClaw 通过 iLink HTTP 完成扫码、收取和回复一条文本；② 当前 Pi + ChatGPT Plus/Pro OAuth 可以在目标机器完成登录、刷新并执行一次无工具 Turn，且这种个人本地桥接符合当前服务政策。任一不成立就停止后续实现。</div>
+      <div class="decision"><b>1</b><div><strong>微信层：</strong>基于官方 <code>openclaw-weixin</code> 源码中公开的 iLink HTTP/JSON 协议，自建最小 TypeScript Client；MVP 提供二维码登录、文本收发、图片下载解密与理解、typing 和长轮询。</div></div>
+      <div class="decision"><b>2</b><div><strong>Agent 层：</strong>使用 <code>@earendil-works/pi-coding-agent</code> 的 <code>createAgentSession()</code>、<code>ModelRuntime</code>、<code>SessionManager</code> 和事件订阅。</div></div>
+      <div class="decision"><b>3</b><div><strong>控制层：</strong>应用自定义 <code>Session → Turn → Step</code> 模型，SQLite 记录状态机、去重、游标、outbox、错误与耗时；Pi JSONL 保留完整 Agent 对话树。</div></div>
+      <div class="decision"><b>4</b><div><strong>运维层：</strong>Pino JSON 日志、Prometheus 指标、Pi Telemetry → OpenTelemetry 适配、仅监听 localhost 的健康检查和 Turn 查询接口。</div></div>
+    </section>
+
+    <section id="scope">
+      <h2>3. 目标与边界</h2>
+      <div class="grid g2">
+        <div class="card">
+          <h3>必须完成（MVP）</h3>
+          <ul class="tight">
+            <li>微信扫码绑定，安全保存 iLink bot token。</li>
+            <li>用实测确认的不可变 sender ID 做精确 allowlist，未知发送者在模型调用前丢弃。</li>
+            <li>长轮询接收文本和图片消息；图片经微信 CDN 下载、AES 解密后持久化，游标落盘并支持重启恢复。</li>
+            <li>同一用户消息串行交给 Pi Agent Session。</li>
+            <li>通过 Pi 的 <code>openai-codex</code> provider 使用 ChatGPT Plus/Pro OAuth。</li>
+            <li>汇总 Pi 流式输出后，以文本回复微信。</li>
+            <li>完整记录 session / turn / step 状态、错误、耗时和关联 ID。</li>
+            <li>提供 <code>/healthz</code>、<code>/readyz</code>、<code>/metrics</code> 和本地诊断查询。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>暂不完成（非目标）</h3>
+          <ul class="tight">
+            <li>微信群聊、多租户、多微信账号、公网 SaaS。</li>
+            <li>语音转写、视频理解和通用文件解析；图片 CDN 下载解密已纳入当前实现。</li>
+            <li>边生成边向微信流式刷屏；MVP 只发送最终答案。</li>
+            <li>生产级 OS/容器 Shell 隔离；当前本机 Bash 仅在显式高风险开关下启用。</li>
+            <li>分布式调度、Kafka、Redis、Kubernetes。</li>
+            <li>严格 exactly-once；MVP 采用 inbox/outbox + 幂等键实现可控的 at-least-once。</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout warn"><strong>产品边界：</strong>iLink ClawBot 是“用户与自己的 AI 服务之间的私聊通道”，不是读取个人微信全部聊天的 API，也不是操作微信联系人、朋友圈或群聊的自动化接口。</div>
+    </section>
+
+    <section id="sequence">
+      <h2>4. 核心时序</h2>
+      <div class="timeline">
+        <div class="timeline-item"><strong>① iLink Poller 收到更新</strong><br><span class="label">解析 <code>message_id</code>、<code>seq</code>、<code>from_user_id</code>、<code>context_token</code> 和文本。</span></div>
+        <div class="timeline-item"><strong>② 原子写入 inbox + 新 cursor</strong><br><span class="label">同一个 SQLite 事务内插入消息并更新 <code>get_updates_buf</code>；唯一键阻止重投创建重复 Turn。</span></div>
+        <div class="timeline-item"><strong>③ 创建或找到业务 Session</strong><br><span class="label">Session key = <code>weixin:{bot_id}:{peer_id}</code>。默认长期复用，用户发送 <code>/new</code> 时归档并新建。</span></div>
+        <div class="timeline-item"><strong>④ 创建 Turn 并入 FIFO</strong><br><span class="label">一条入站用户消息对应一个业务 Turn。若 Agent 正忙，新消息保持 <code>QUEUED</code>，不使用 Pi steering。</span></div>
+        <div class="timeline-item"><strong>⑤ 恢复或创建 Pi AgentSession</strong><br><span class="label">用数据库中的 <code>pi_session_file</code> 打开原生 JSONL；无映射时由 <code>SessionManager.create()</code> 新建并回写。</span></div>
+        <div class="timeline-item"><strong>⑥ 执行 <code>session.prompt()</code></strong><br><span class="label">订阅 Pi 事件，聚合文本 delta；将 agent、Pi turn、LLM、tool 事件写成 Step 和 Trace。</span></div>
+        <div class="timeline-item"><strong>⑦ 生成 outbox</strong><br><span class="label">最终文本先持久化，再创建带稳定 <code>client_id</code> / <code>run_id</code> 的出站记录。</span></div>
+        <div class="timeline-item"><strong>⑧ 调用 iLink sendMessage</strong><br><span class="label">携带目标用户和当前 <code>context_token</code>；成功后 Turn → <code>SUCCEEDED</code>，失败则按退避策略重试。</span></div>
+      </div>
+    </section>
+
+    <section id="pi">
+      <h2>5. Pi SDK、Provider 与 Codex 订阅</h2>
+      <div class="callout success"><strong>已确认能力：</strong><code>@earendil-works/pi-ai</code> 是统一 LLM API / Provider 层，内建 <code>openai-codex</code>，支持 ChatGPT Plus/Pro OAuth；<code>pi-agent-core</code> 在它之上实现 Agent loop；<code>pi-coding-agent</code> 同时提供 CLI 和可嵌入 SDK。运行时选择 SDK，并不意味着必须使用 CLI。</div>
+
+      <h3>5.1 三层依赖关系</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>包</th><th>职责</th><th>本方案如何使用</th></tr></thead>
+        <tbody>
+          <tr><td><code>@earendil-works/pi-ai</code></td><td>统一 Model / Provider 类型、模型目录、stream / complete、OAuth provider 能力</td><td>Provider 接入的事实边界；选择 <code>openai-codex</code> 模型</td></tr>
+          <tr><td><code>@earendil-works/pi-agent-core</code></td><td>消息状态、Agent loop、tool call 循环和事件</td><td>由 coding-agent SDK 组合；业务层不直接依赖其事件类型</td></tr>
+          <tr><td><code>@earendil-works/pi-coding-agent</code></td><td>AgentSession、SessionManager、ModelRuntime、compaction、SDK 与 CLI UI</td><td>只 import SDK exports；绝不 spawn <code>pi</code> 进程</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout"><strong>为什么不只依赖 <code>pi-ai</code>？</strong><code>pi-ai</code> 已经解决“怎么调用不同模型 Provider”，但不负责本方案需要的完整 coding-agent 会话 JSONL、compaction、工具事件与 AgentSession 生命周期。如果产品最终只是单轮聊天且应用愿意自行管理消息历史，可以改为直接组合 <code>pi-agent-core + pi-ai</code>；当前 MVP 复用 coding-agent SDK 更省实现成本。</div>
+
+      <h3>5.2 包与版本策略</h3>
+      <pre><code>npm install \
+  @earendil-works/pi-coding-agent@0.84.3 \
+  @earendil-works/pi-agent-core@0.84.3 \
+  @earendil-works/pi-ai@0.84.3</code></pre>
+      <ul>
+        <li>方案按调研基线 <code>0.84.3</code> 描述；开发时重新核对当前版本，三个包统一 pin 精确版本并提交 lockfile。</li>
+        <li>该基线声明 Node.js <code>≥ 22.19.0</code>。</li>
+        <li>不要混用旧的 <code>@mariozechner/pi-*</code> 和当前 <code>@earendil-works/pi-*</code>。</li>
+      </ul>
+
+      <h3>5.3 OAuth 与模型绑定：应用内首次启动向导</h3>
+      <pre><code><span class="k">const</span> runtime = <span class="k">await</span> ModelRuntime.create({ authPath, modelsStorePath });
+
+<span class="k">if</span> (!(<span class="k">await</span> runtime.checkAuth(<span class="s">"openai-codex"</span>))) {
+  <span class="c">// notify(auth_url) 时打开系统浏览器；prompt() 处理登录方式或验证码。</span>
+  <span class="k">await</span> runtime.login(<span class="s">"openai-codex"</span>, <span class="s">"oauth"</span>, interaction);
+}
+
+<span class="k">const</span> models = <span class="k">await</span> runtime.getAvailable(<span class="s">"openai-codex"</span>);
+<span class="k">const</span> selectedModelId = <span class="k">await</span> promptUserToSelect(models);
+<span class="k">await</span> saveNonSecretSettings({ provider: <span class="s">"openai-codex"</span>, selectedModelId });</code></pre>
+      <p>首次启动统一检测：缺 iLink 凭证则扫码，缺 Codex OAuth 则由 <code>pi-ai</code> Provider 流程打开浏览器，缺模型绑定则展示当前账号可用 catalog。OAuth 凭证写入 <code>~/.pi/agent/auth.json</code>，模型选择写入本地非敏感 settings；应用不复制 access token、不自行拼 OAuth 请求，也不要求用户先进入 Pi CLI。</p>
+
+      <h3>5.4 SDK 集成骨架</h3>
+      <pre><code><span class="k">import</span> {
+  createAgentSession,
+  ModelRuntime,
+  SessionManager,
+} <span class="k">from</span> <span class="s">"@earendil-works/pi-coding-agent"</span>;
+
+<span class="k">const</span> modelRuntime = <span class="k">await</span> ModelRuntime.create({
+  authPath: process.env.PI_AUTH_PATH,
+  modelsStorePath: process.env.PI_MODELS_STORE_PATH,
+});
+
+<span class="c">// ModelRuntime 组合了 pi-ai 的 catalog / provider 与凭证解析。</span>
+<span class="k">const</span> model = modelRuntime.getModel(
+  <span class="s">"openai-codex"</span>,
+  process.env.PI_MODEL_ID ?? <span class="s">"gpt-5.5"</span>,
+);
+<span class="k">if</span> (!model) <span class="k">throw new</span> Error(<span class="s">"Configured Codex model is unavailable"</span>);
+
+<span class="k">const</span> { session } = <span class="k">await</span> createAgentSession({
+  cwd: WORKSPACE_ROOT,
+  model,
+  thinkingLevel: process.env.PI_THINKING_LEVEL ?? <span class="s">"medium"</span>,
+  modelRuntime,
+  sessionManager: SessionManager.open(piSessionFile),
+  resourceLoader, <span class="c">// 独立 System Prompt + 本地 Pi Skills</span>
+  customTools: [safeRead, listFiles, sandboxWrite, publicHttpsGet],
+  tools: [<span class="s">"read"</span>, <span class="s">"list_files"</span>, <span class="s">"sandbox_write"</span>, <span class="s">"http_get"</span>],
+});
+
+<span class="c">// PiAgentGateway 内部调用；Application 层只看 AgentPort。</span>
+<span class="k">await</span> session.prompt(userText);</code></pre>
+      <div class="callout warn"><strong>模型 ID 不写死到业务逻辑：</strong>Provider 固定为配置项 <code>PI_PROVIDER=openai-codex</code>，模型用 <code>PI_MODEL_ID</code>，thinking 用 <code>PI_THINKING_LEVEL</code>。启动时由 adapter 验证 provider、模型和 OAuth；业务 use case 不认识这些配置细节。示例模型名仅为占位，必须以目标账号当时可见 catalog 为准。</div>
+      <h3>5.5 Pi 事件如何进入 Step</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Pi Event</th><th>业务记录</th><th>存储策略</th></tr></thead>
+        <tbody>
+          <tr><td><code>agent_start / agent_end</code></td><td>根 Step：<code>agent_run</code></td><td><code>agent_end</code> 可能伴随后续 retry；仅在 <code>agent_settled</code>（若当前版本提供）或 awaited <code>prompt()</code> 与订阅者全部完成后结算业务 Turn。</td></tr>
+          <tr><td><code>turn_start / turn_end</code></td><td>Step：<code>pi_llm_round</code></td><td>一个业务 Turn 内可出现多个 Pi turn。</td></tr>
+          <tr><td><code>message_update:text_delta</code></td><td>内存聚合器</td><td>不逐 token 写库；只累计字符数，最终文本一次落盘。</td></tr>
+          <tr><td><code>message_end</code></td><td>Step event</td><td>记录角色、内容 hash、长度、usage；默认不写完整 thinking。</td></tr>
+          <tr><td><code>tool_execution_start/end</code></td><td>Step：<code>tool_call</code></td><td>记录 tool 名、参数摘要、结果摘要、耗时、错误。</td></tr>
+          <tr><td><code>compaction_start/end</code></td><td>Step：<code>compaction</code></td><td>记录压缩原因、耗时和压缩前后消息数。</td></tr>
+          <tr><td><code>auto_retry_start/end</code></td><td>Step：<code>provider_retry</code></td><td>记录 retry index、错误分类和退避时间。</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="ilink">
+      <h2>6. 微信 iLink 接入</h2>
+      <h3>6.1 MVP Client 能力</h3>
+      <div class="grid g3">
+        <div class="card"><h3>认证</h3><p><code>get_bot_qrcode</code> → <code>get_qrcode_status</code>，取得 <code>bot_token</code>、bot id、user id 和服务端返回的 base URL。</p></div>
+        <div class="card"><h3>接收</h3><p><code>getupdates</code> 长轮询，使用并持久化 <code>get_updates_buf</code>，支持 AbortSignal、超时、重试和退避。</p></div>
+        <div class="card"><h3>发送</h3><p><code>sendmessage</code> 发送文本；使用稳定 <code>client_id</code>、<code>run_id</code>、目标 user id 和对应 <code>context_token</code>。</p></div>
+      </div>
+      <h3>6.2 内部接口</h3>
+      <pre><code><span class="k">interface</span> ILinkClient {
+  startQrLogin(): Promise&lt;QrLogin&gt;;
+  waitForQrLogin(login: QrLogin, signal: AbortSignal): Promise&lt;ILinkCredential&gt;;
+  getUpdates(cursor: string, signal: AbortSignal): Promise&lt;UpdateBatch&gt;;
+  sendText(message: OutboundEnvelope, signal: AbortSignal): Promise&lt;SendResult&gt;;
+  getConfig(userId: string, contextToken?: string): Promise&lt;ILinkConfig&gt;;
+  sendTyping(userId: string, ticket: string, active: boolean): Promise&lt;void&gt;;
+}</code></pre>
+      <h3>6.3 协议约束</h3>
+      <ul>
+        <li>认证头包含 <code>AuthorizationType: ilink_bot_token</code> 和 <code>Authorization: Bearer ...</code>。</li>
+        <li>遵循官方 Client 的 <code>iLink-App-Id</code>、client version、随机 <code>X-WECHAT-UIN</code> 和 <code>base_info.bot_agent</code> 约定。</li>
+        <li>扫码后可能返回新的 <code>baseurl</code> 或重定向 host；后续请求必须使用有效地址，而不是永远写死初始域名。</li>
+        <li><code>get_updates_buf</code> 是 opaque cursor，成功的空消息批次也可能推进；只有协议级成功（不只是 HTTP 200）时才与该批 inbox 原子提交。</li>
+        <li><code>context_token</code> 属于短期会话材料：不得打印到日志；出站必须绑定“触发当前 Turn 的入站记录”里的 token，而不是会话最新 token，以免并发消息串线。</li>
+        <li>必须先在真实 payload 中验证 sender ID 的不可变性，再把它作为 allowlist 主键；显示名不能用于鉴权。</li>
+        <li>MVP 文本长度按 3,500 字符安全分片，低于官方插件的 4,000 字符 channel limit。</li>
+      </ul>
+      <div class="callout danger"><strong>稳定性声明：</strong>iLink 目前是 ClawBot 配套通道协议，而不是承诺长期稳定、面向任意第三方的通用微信 OpenAPI。实现应隔离在 adapter 内，pin 参考源码 commit，并准备协议兼容测试。</div>
+    </section>
+
+    <section id="lifecycle">
+      <h2>7. Session / Turn / Step 管理</h2>
+      <p class="sub">避免“Pi turn”和“用户的一轮对话”语义冲突：本方案的 Turn 是一条微信入站消息驱动的完整业务执行；Pi 的 <code>turn_start/end</code> 被映射为 Turn 下的 <code>pi_llm_round</code> Step。</p>
+      <div class="grid g3">
+        <div class="card">
+          <h3>Session</h3>
+          <p>一段连续的用户对话和 Pi 原生会话映射。</p>
+          <ul class="tight"><li>键：channel + bot + peer</li><li>默认长期 ACTIVE</li><li><code>/new</code> 后归档</li><li>关联 Pi session file</li></ul>
+        </div>
+        <div class="card">
+          <h3>Turn</h3>
+          <p>一条用户消息从收到到最终回复的业务事务。</p>
+          <ul class="tight"><li>唯一绑定 inbox message</li><li>同 Session FIFO</li><li>拥有 trace_id / run_id</li><li>保存最终答复和 usage</li></ul>
+        </div>
+        <div class="card">
+          <h3>Step</h3>
+          <p>Turn 内一个可计时、可失败、可追踪的原子活动。</p>
+          <ul class="tight"><li>LLM round</li><li>tool call</li><li>compaction / retry</li><li>outbound delivery</li></ul>
+        </div>
+      </div>
+
+      <h3>7.1 状态机</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>对象</th><th>主路径</th><th>异常终态</th><th>恢复策略</th></tr></thead>
+        <tbody>
+          <tr><td>Session</td><td><span class="state">ACTIVE</span> → <span class="state">ARCHIVED</span></td><td><span class="state">CORRUPTED</span></td><td>Pi JSONL 无法打开时冻结旧 Session，新建 Session，并保留诊断记录。</td></tr>
+          <tr><td>Turn</td><td><span class="state">RECEIVED</span> → <span class="state">QUEUED</span> → <span class="state">RUNNING</span> → <span class="state">REPLY_PENDING</span> → <span class="state">SUCCEEDED</span></td><td><span class="state">FAILED</span> / <span class="state">DEAD_LETTER</span> / <span class="state">CANCELLED</span></td><td>依据是否已有 final_response 决定只重发还是人工/命令重试 Agent。</td></tr>
+          <tr><td>Step</td><td><span class="state">PENDING</span> → <span class="state">RUNNING</span> → <span class="state">SUCCEEDED</span></td><td><span class="state">FAILED</span> / <span class="state">SKIPPED</span> / <span class="state">INTERRUPTED</span></td><td>进程启动时将残留 RUNNING 标记为 INTERRUPTED，禁止假装成功。</td></tr>
+          <tr><td>Outbox</td><td><span class="state">PENDING</span> → <span class="state">SENDING</span> → <span class="state">SENT</span></td><td><span class="state">RETRY_WAIT</span> / <span class="state">DEAD_LETTER</span></td><td>稳定 client_id + 指数退避；是否被服务端幂等需实测。</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>7.2 并发规则</h3>
+      <ul>
+        <li><strong>同一 Session：</strong>并发度固定为 1；同一时刻只有一个 Turn 可以是 RUNNING/REPLY_PENDING。</li>
+        <li><strong>全局 MVP：</strong>单用户，因此全局 worker 并发度也设为 1，减少 OAuth、JSONL 和工具竞态。</li>
+        <li><strong>流式期间新消息：</strong>落 inbox 并排队，不调用 <code>steer()</code>；未来可按命令显式增加 <code>/steer</code>。</li>
+        <li><strong>命令优先级：</strong><code>/status</code>、<code>/cancel</code>、<code>/new</code> 在 router 层处理，不进入普通 Agent prompt。</li>
+      </ul>
+    </section>
+
+    <section id="storage">
+      <h2>8. 持久化设计</h2>
+      <h3>8.1 数据所有权</h3>
+      <div class="grid g2">
+        <div class="card"><h3>SQLite：执行控制面</h3><p>负责 inbox/outbox、游标、Session 映射、Turn/Step 状态、错误、耗时、重试、final response 和诊断索引，是崩溃恢复的依据。</p></div>
+        <div class="card"><h3>Pi JSONL：Agent 上下文面</h3><p>由 Pi <code>SessionManager</code> 管理完整消息树、模型信息、工具消息、compaction 和分支。应用不自行重建 Pi 的内部格式。</p></div>
+      </div>
+      <h3>8.2 最小表设计</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>表</th><th>关键字段</th><th>约束与用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>channel_accounts</code></td><td>id, bot_id, user_id, base_url, credential_ref, status</td><td>不存明文 token；<code>credential_ref</code> 指向受保护文件或 Keychain。</td></tr>
+          <tr><td><code>channel_cursors</code></td><td>account_id, cursor, updated_at</td><td>每账号唯一；与 inbox 插入同事务更新。</td></tr>
+          <tr><td><code>inbox_messages</code></td><td>id, account_id, channel_message_id, seq, peer_id, context_token_enc, body_hash, raw_ref, status</td><td><code>UNIQUE(account_id, channel_message_id)</code>；若 message_id 缺失，使用稳定 fingerprint。</td></tr>
+          <tr><td><code>sessions</code></td><td>id, channel, account_id, peer_id, pi_session_id, pi_session_file, status, last_turn_at</td><td>同一 channel/account/peer 仅一个 ACTIVE Session。</td></tr>
+          <tr><td><code>turns</code></td><td>id, session_id, inbox_id, trace_id, run_id, status, queued_at, started_at, completed_at, final_response, error_code</td><td><code>UNIQUE(inbox_id)</code>，一条入站消息只创建一个业务 Turn。</td></tr>
+          <tr><td><code>steps</code></td><td>id, turn_id, parent_step_id, ordinal, kind, name, status, started_at, ended_at, input_summary, output_summary, error_json</td><td><code>UNIQUE(turn_id, ordinal)</code>；记录执行树，不记录逐 token delta。</td></tr>
+          <tr><td><code>event_journal</code></td><td>seq, event_id, occurred_at, source, type, session_id, turn_id, step_id, trace_id, payload_json</td><td>只追加的脱敏审计流，用于重建状态投影和解释状态迁移。</td></tr>
+          <tr><td><code>outbox_messages</code></td><td>id, turn_id, chunk_index, client_id, context_token_enc, body, status, attempt_count, next_attempt_at</td><td><code>UNIQUE(turn_id, chunk_index)</code>、<code>UNIQUE(client_id)</code>；绑定触发该 Turn 的 context_token，先落库再发送。</td></tr>
+          <tr><td><code>outbox_attempts</code></td><td>id, outbox_id, attempt_no, started_at, ended_at, outcome, http_status, remote_request_id, error</td><td>每次发送独立留痕；超时后远端结果未知时记为 <code>UNCERTAIN</code>，不能记成确定失败。</td></tr>
+        </tbody>
+      </table></div>
+      <h3>8.3 推荐 SQLite 配置</h3>
+      <pre><code>PRAGMA journal_mode = WAL;
+PRAGMA synchronous = FULL;
+PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 5000;</code></pre>
+      <p>单机 MVP 可使用 Node 内置 <code>node:sqlite</code> 或成熟 SQLite driver。所有事务保持短小，绝不跨越 HTTP、LLM 或 tool 执行；worker claim 使用条件更新/CAS（可配 owner、boot_id、lease_until）。若选择 Pi 的 SQLite session backend，也不要把它与应用 control-plane schema 混为一套所有权；Pi 存储视为 opaque，仅保存 <code>pi_session_id</code> 和 locator。</p>
+    </section>
+
+    <section id="observability">
+      <h2>9. 日志与可观测性</h2>
+      <h3>9.1 关联 ID 标准</h3>
+      <div class="grid g4">
+        <div class="card"><h4>session_id</h4><p>跨多条微信消息的对话 ID。</p></div>
+        <div class="card"><h4>turn_id / trace_id</h4><p>单条入站消息到回复的执行链。</p></div>
+        <div class="card"><h4>step_id / span_id</h4><p>LLM、tool、retry、send 等子操作。</p></div>
+        <div class="card"><h4>message_id / client_id</h4><p>iLink 入站去重与出站尝试关联。</p></div>
+      </div>
+      <h3>9.2 日志</h3>
+      <p>使用 Pino 输出结构化 JSON，开发环境可用 pretty transport；生产默认写 <code>data/logs/app.YYYY-MM-DD.jsonl</code> 并轮转。每条日志至少包含：</p>
+      <pre><code>{
+  "ts": "2026-...",
+  "level": "info",
+  "event": "turn.completed",
+  "component": "turn-worker",
+  "session_id": "ses_...",
+  "turn_id": "trn_...",
+  "trace_id": "...",
+  "step_id": "stp_...",
+  "channel_message_id": "...",
+  "pi_session_id": "...",
+  "duration_ms": 4821,
+  "status": "SUCCEEDED"
+}</code></pre>
+      <div class="callout warn"><strong>本地 Trace 策略：</strong>永不记录 bot token、OAuth access/refresh token、完整 <code>context_token</code>、Authorization header 或 thinking 内容。为本机单用户调试，每个 Agent Turn 会保存实际 Pi System Prompt、用户消息、Skill/工具清单和事件；仅通过 localhost Admin 页面访问，默认保留最近 100 条，可用 <code>TRACE_RETENTION</code> 调整。</div>
+      <h3>9.3 Trace 设计</h3>
+      <pre><code>wechat.turn
+├─ ilink.inbox.persist
+├─ queue.wait
+├─ pi.agent.run
+│  ├─ pi.llm.round[0]
+│  │  ├─ pi.provider.request
+│  │  └─ pi.tool.call[*]
+│  └─ pi.llm.round[1]
+├─ outbox.persist
+└─ ilink.send</code></pre>
+      <p>Pi 当前提供 vendor-neutral 的 <code>@earendil-works/pi-telemetry</code> contract，但不自带 exporter。MVP 实现一个 adapter，将 Pi span 接到 OpenTelemetry SDK；默认可落本地 OTLP/console，未来无侵入切换 Jaeger、Tempo 或 Sentry。</p>
+      <h3>9.4 指标</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>指标</th><th>类型</th><th>标签</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>ilink_poll_requests_total</code></td><td>Counter</td><td>result</td><td>长轮询成功率和错误分类。</td></tr>
+          <tr><td><code>ilink_inbound_messages_total</code></td><td>Counter</td><td>type, deduplicated</td><td>消息量与重复投递。</td></tr>
+          <tr><td><code>agent_turns_total</code></td><td>Counter</td><td>status</td><td>Turn 成功、失败、取消。</td></tr>
+          <tr><td><code>agent_turn_duration_seconds</code></td><td>Histogram</td><td>status</td><td>端到端延迟。</td></tr>
+          <tr><td><code>pi_llm_duration_seconds</code></td><td>Histogram</td><td>provider, model, result</td><td>模型耗时与异常。</td></tr>
+          <tr><td><code>pi_tool_calls_total</code></td><td>Counter</td><td>tool, result</td><td>工具调用与阻断情况。</td></tr>
+          <tr><td><code>outbox_messages_total</code></td><td>Counter</td><td>result</td><td>回复发送和重试。</td></tr>
+          <tr><td><code>agent_queue_depth</code></td><td>Gauge</td><td>无高基数标签</td><td>是否发生积压。</td></tr>
+        </tbody>
+      </table></div>
+      <p class="label">禁止把 user_id、session_id、turn_id、message_id 放入 Prometheus label，避免高基数；这些 ID 只用于日志和 trace。</p>
+      <h3>9.5 本地运维接口</h3>
+      <ul>
+        <li><code>GET 127.0.0.1:9464/healthz</code>：进程存活。</li>
+        <li><code>GET 127.0.0.1:9464/readyz</code>：SQLite 可写、iLink 已登录、Codex OAuth 有效、model 可用。</li>
+        <li><code>GET 127.0.0.1:9464/metrics</code>：Prometheus exposition。</li>
+        <li><code>GET 127.0.0.1:9464/admin</code>：本地 Trace Tab，可视化请求、实际 System Prompt、Skills、工具事件和回复。</li>
+        <li><code>GET 127.0.0.1:9464/debug/traces?limit=100</code>：最近 Agent Trace 摘要。</li>
+        <li><code>GET 127.0.0.1:9464/debug/traces/:turnId</code>：完整 Prompt 快照与 Turn/Step 详情。</li>
+        <li><code>GET 127.0.0.1:9464/debug/turns/:turnId</code>：返回 Turn + Step 树。</li>
+        <li><code>GET 127.0.0.1:9464/debug/recent-errors</code>：最近 N 条失败摘要。</li>
+      </ul>
+    </section>
+
+    <section id="security">
+      <h2>10. 安全边界</h2>
+      <div class="callout danger"><strong>关键事实：</strong>Pi 官方说明其本身不提供文件系统、进程、网络或凭证访问的内建权限系统，默认拥有启动它的 OS 用户权限。因此“只在本机运行”不能代替 sandbox 和 tool policy。</div>
+      <div class="grid g2">
+        <div class="card">
+          <h3>MVP 默认策略</h3>
+          <ul class="tight">
+            <li>使用独立 OS 用户运行服务。</li>
+            <li>固定 <code>WORKSPACE_ROOT</code>，所有文件路径 realpath 后必须位于根目录。</li>
+            <li>工具采用显式 allowlist：Skill/沙箱只读、沙箱写入与公网 HTTPS GET。高风险本机 Bash 由 <code>TOOL_SHELL_ENABLED</code> 单独控制，启用后继承 OS 用户权限且不受路径 jail 约束。</li>
+            <li><code>beforeToolCall</code> fail-closed：未知工具一律阻断；bash、write、edit、delete、browser、网络请求和凭证读取始终关闭。</li>
+            <li>同一时间只执行一个 Turn。</li>
+            <li>管理 HTTP 只绑定 <code>127.0.0.1</code>。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>凭证策略</h3>
+          <ul class="tight">
+            <li>Pi OAuth：沿用 <code>~/.pi/agent/auth.json</code>，权限 <code>0600</code>。</li>
+            <li>iLink token：OS Keychain 优先；MVP 可用 <code>0600</code> 文件并在 SQLite 只存引用。</li>
+            <li><code>context_token</code>：如需落库，用本机 master key 加密；日志全部 redact。</li>
+            <li>启动时检查凭证文件 owner 和权限，不符合则拒绝 ready。</li>
+            <li>诊断导出前二次脱敏，禁止打包 auth 文件。</li>
+          </ul>
+        </div>
+      </div>
+      <h3>后续写操作方案</h3>
+      <p>Phase 2 再增加微信内审批：Agent 产生有副作用的 tool call → Step 进入 <code>WAITING_APPROVAL</code> → 微信发送参数摘要和一次性短码 → 用户回复 <code>/approve CODE</code> → 工具在 sandbox 中执行。审批必须绑定 turn、tool_call_id、参数 hash 和过期时间，不能只凭“确认”二字。</p>
+    </section>
+
+    <section id="recovery">
+      <h2>11. 幂等、重试与故障恢复</h2>
+      <details open><summary>接收端：先持久化，再处理</summary><div><p><code>getUpdates</code> 返回后，在单个事务中完成 inbox 去重插入和 cursor 更新。即使服务随后崩溃，消息仍在本地队列；若服务端重投，唯一键将其识别为重复。</p></div></details>
+      <details open><summary>执行端：不盲目重跑有副作用 Turn</summary><div><p>进程重启发现 <code>RUNNING</code> Turn 时，将未结束 Step 标记为 <code>INTERRUPTED</code>。如果 <code>final_response</code> 已存在，只恢复 outbox；否则 MVP 标记为 FAILED，允许用户发送 <code>/retry &lt;turnId&gt;</code>。默认无工具使人工重试风险可控；开启任何有副作用工具后必须改为 <code>NEEDS_REVIEW</code>，不得盲目重跑。</p></div></details>
+      <details open><summary>发送端：Outbox Pattern</summary><div><p>回复文本与稳定 <code>client_id</code> 先落库再调用 iLink。网络超时无法确认是否已送达时复用同一 client_id 重试，但服务端是否对 client_id 提供强幂等需要集成测试验证；在确认之前对外只承诺“尽量避免重复”，不承诺 exactly-once。</p></div></details>
+      <details><summary>退避策略</summary><div><p>iLink poll：2s、5s、15s、30s 封顶并加 jitter；send：1s、3s、10s、30s，最多 5 次后 DEAD_LETTER；Codex provider retry 优先交由 Pi，自身只记录 Pi retry event，不做双层无限重试。</p></div></details>
+      <details><summary>单实例、Lease 与恢复所有权</summary><div><p>主防线使用 OS singleton lock，避免两个进程同时 long-poll；SQLite claim 额外记录 owner、boot_id、lease_until。启动时可立即回收同一旧 boot 的 claim，其他 owner 仅在 lease 过期后回收。绝不在数据库事务内等待网络或模型。</p></div></details>
+      <details><summary>优雅停机</summary><div><p>收到 SIGTERM 后：停止发起新 poll → abort 当前长轮询 → 停止取新 Turn → 等待当前 Pi Turn 在限定时间内结束 → flush DB/log/trace → 退出。超时则把运行中 Step 标记为 INTERRUPTED。</p></div></details>
+    </section>
+
+    <section id="structure">
+      <h2>12. 预期文件结构与领域分层</h2>
+      <p class="sub">采用轻量 Hexagonal Architecture：<strong>Domain → Application → Ports ← Adapters</strong>。目录按依赖规则而不是第三方库名字组织，Pi 与 iLink 都只能出现在 adapter / infrastructure 层。</p>
+
+      <h3>12.1 领域划分</h3>
+      <div class="grid g4">
+        <div class="card"><h3>Messaging</h3><p>入站/出站消息、channel message ID、sender identity、文本与命令。只表达通道无关语义。</p></div>
+        <div class="card"><h3>Conversation</h3><p>业务 Session、SessionKey、上下文延续与归档；只保存 Pi session locator，不理解 JSONL 格式。</p></div>
+        <div class="card"><h3>Execution</h3><p>Turn、Step、状态机、FIFO 与错误分类，是整个应用的核心领域。</p></div>
+        <div class="card"><h3>Delivery</h3><p>Outbox、chunk、delivery attempt、幂等键和不确定发送结果。</p></div>
+      </div>
+      <div class="callout"><strong>Policy 是横切领域规则：</strong><code>SenderPolicy</code> 决定谁能触发模型；<code>ToolPolicy</code> 决定 Agent 能调用什么。两者的规则接口放 Domain，读取配置和挂接 Pi hook 的实现放 Adapter。</div>
+
+      <h3>12.2 推荐目录</h3>
+      <pre><code>wechat-pi-agent/
+├─ package.json
+├─ tsconfig.json
+├─ .env.example
+├─ src/
+│  ├─ bootstrap/                         # 唯一 composition root
+│  │  ├─ main.ts                         # 组装依赖 + graceful shutdown
+│  │  ├─ config.ts                       # zod 校验后的 AppConfig
+│  │  └─ container.ts                    # ports -> adapters wiring
+│  │
+│  ├─ prompts/
+│  │  └─ wechat-assistant.md             # 独立、可审查的 System Prompt
+│  │
+│  ├─ domain/                            # 纯 TS；禁止 import 外部 SDK
+│  │  ├─ messaging/
+│  │  │  ├─ inbound-message.ts
+│  │  │  ├─ outbound-message.ts
+│  │  │  └─ message-id.ts
+│  │  ├─ conversation/
+│  │  │  ├─ session.ts
+│  │  │  └─ session-key.ts
+│  │  ├─ execution/
+│  │  │  ├─ turn.ts
+│  │  │  ├─ step.ts
+│  │  │  ├─ status.ts
+│  │  │  └─ errors.ts
+│  │  ├─ delivery/
+│  │  │  ├─ outbox-message.ts
+│  │  │  └─ delivery-attempt.ts
+│  │  └─ policy/
+│  │     ├─ sender-policy.ts
+│  │     └─ tool-policy.ts
+│  │
+│  ├─ application/                       # 用例编排；只依赖 domain + ports
+│  │  ├─ ports/
+│  │  │  ├─ agent.port.ts                # run/resume/cancel Agent turn
+│  │  │  ├─ channel.port.ts              # poll/send/typing
+│  │  │  ├─ repositories.port.ts         # UnitOfWork + repositories
+│  │  │  ├─ credential-store.port.ts
+│  │  │  └─ telemetry.port.ts
+│  │  ├─ use-cases/
+│  │  │  ├─ ingest-message.ts             # inbox + cursor 原子提交
+│  │  │  ├─ run-next-turn.ts              # claim + FIFO + AgentPort
+│  │  │  ├─ deliver-reply.ts              # outbox 发送与重试
+│  │  │  ├─ recover-interrupted-work.ts
+│  │  │  └─ start-new-session.ts
+│  │  └─ services/
+│  │     ├─ command-router.ts
+│  │     └─ reply-chunker.ts
+│  │
+│  ├─ adapters/
+│  │  ├─ inbound/
+│  │  │  ├─ ilink/
+│  │  │  │  ├─ poller.ts                  # 驱动 ingest-message
+│  │  │  │  ├─ mapper.ts
+│  │  │  │  └─ protocol-types.ts
+│  │  │  └─ admin-http/server.ts           # health/ready/metrics/debug
+│  │  └─ outbound/
+│  │     ├─ ilink/
+│  │     │  ├─ ilink-client.ts             # HTTP 协议实现
+│  │     │  ├─ ilink-sender.ts             # ChannelPort 实现
+│  │     │  └─ qr-login.ts
+│  │     ├─ pi/
+│  │     │  ├─ pi-agent-gateway.ts         # AgentPort 的唯一 Pi 实现
+│  │     │  ├─ pi-runtime.ts               # ModelRuntime + pi-ai model
+│  │     │  ├─ pi-session-registry.ts      # 业务 session ↔ Pi JSONL
+│  │     │  ├─ pi-event-mapper.ts          # Pi event → StepEvent
+│  │     │  ├─ system-prompt.ts            # 读取并校验 Prompt 文件
+│  │     │  └─ pi-tool-policy-adapter.ts   # Domain policy → Pi hook
+│  │     ├─ sqlite/
+│  │     │  ├─ db.ts
+│  │     │  ├─ unit-of-work.ts
+│  │     │  ├─ repositories/
+│  │     │  └─ migrations/001_init.sql
+│  │     ├─ credentials/
+│  │     │  ├─ file-credential-store.ts
+│  │     │  └─ keychain-credential-store.ts
+│  │     └─ observability/
+│  │        ├─ logger.ts
+│  │        ├─ redaction.ts
+│  │        ├─ metrics.ts
+│  │        ├─ tracing.ts
+│  │        └─ pi-telemetry-adapter.ts
+│  │
+│  └─ shared/                             # 只放稳定技术原语，禁止业务杂物
+│     ├─ clock.ts
+│     ├─ ids.ts
+│     └─ result.ts
+│
+├─ data/                                  # gitignored；运行时数据
+│  ├─ app.db
+│  ├─ credentials/
+│  ├─ logs/
+│  └─ pi-sessions/
+└─ test/
+   ├─ unit/domain/
+   ├─ unit/application/
+   ├─ contract/ilink-client.test.ts
+   ├─ contract/pi-agent-gateway.test.ts
+   ├─ integration/crash-recovery.test.ts
+   ├─ integration/turn-lifecycle.test.ts
+   └─ fixtures/</code></pre>
+
+      <h3>12.3 依赖规则（应由 lint / CI 强制）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>目录</th><th>可以依赖</th><th>禁止依赖</th></tr></thead>
+        <tbody>
+          <tr><td><code>domain/**</code></td><td>同层领域代码、极少量标准库</td><td>Pi、iLink、SQLite、HTTP、Pino、环境变量</td></tr>
+          <tr><td><code>application/**</code></td><td><code>domain/**</code>、<code>application/ports/**</code></td><td><code>adapters/**</code> 和任何具体 SDK</td></tr>
+          <tr><td><code>adapters/**</code></td><td>它实现的 port、domain DTO、第三方 SDK</td><td>跨 adapter 直接调用；必须经 port / use case</td></tr>
+          <tr><td><code>bootstrap/**</code></td><td>所有层</td><td>承载业务规则；这里只做配置和 wiring</td></tr>
+        </tbody>
+      </table></div>
+      <p>建议用 ESLint <code>no-restricted-imports</code> 或 <code>eslint-plugin-boundaries</code> 固化上述方向。这样未来替换 iLink、把 Codex 换成其他 <code>pi-ai</code> Provider，或将 SQLite 换成别的存储时，Domain / Application 无需改动。</p>
+
+      <h3>12.4 核心依赖建议</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>用途</th><th>依赖</th><th>备注</th></tr></thead>
+        <tbody>
+          <tr><td>Agent</td><td><code>@earendil-works/pi-coding-agent</code>, <code>@earendil-works/pi-agent-core</code>, <code>@earendil-works/pi-ai</code></td><td>Provider 在 pi-ai；运行时只走 SDK；三个包 pin 同版本。</td></tr>
+          <tr><td>配置</td><td><code>zod</code></td><td>启动即验证，不允许静默使用错误默认值。</td></tr>
+          <tr><td>数据库</td><td><code>node:sqlite</code> 或固定版本 driver</td><td>MVP 优先减少 native dependency。</td></tr>
+          <tr><td>日志</td><td><code>pino</code></td><td>结构化日志和 redact。</td></tr>
+          <tr><td>指标</td><td><code>prom-client</code></td><td>仅 localhost。</td></tr>
+          <tr><td>Trace</td><td><code>@opentelemetry/sdk-node</code> + Pi telemetry adapter</td><td>可配置为 no-op。</td></tr>
+          <tr><td>HTTP</td><td>Node <code>fetch</code> / <code>undici</code></td><td>统一 timeout、AbortSignal 和 retry policy。</td></tr>
+          <tr><td>ID</td><td>ULID/UUIDv7 实现</td><td>可排序，便于本地诊断。</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="roadmap">
+      <h2>13. 实施计划</h2>
+      <div class="timeline">
+        <div class="timeline-item"><strong>P0 · 兼容性 Spike Gate（1–2 天）</strong><br><span class="label">固定版本；直连 iLink 完成 QR → receive → echo；实测 cursor、sender ID、context_token、重复与 send timeout；Pi Codex OAuth 执行一次无工具 Turn并核对当前政策。任一 Gate 失败则停止。</span></div>
+        <div class="timeline-item"><strong>P1 · iLink 文本通道（1 天）</strong><br><span class="label">QR、token store、getUpdates、sendMessage、mock server、协议 fixture；先用 echo handler 跑通。</span></div>
+        <div class="timeline-item"><strong>P2 · Pi Agent 集成（1 天）</strong><br><span class="label">ModelRuntime、AgentSession、默认无工具的 fail-closed policy、最终文本聚合、错误分类。</span></div>
+        <div class="timeline-item"><strong>P3 · Session / Turn / Step（1 天）</strong><br><span class="label">状态机、Pi JSONL 映射、FIFO、inbox/outbox、命令路由。</span></div>
+        <div class="timeline-item"><strong>P4 · 可观测性与恢复（1 天）</strong><br><span class="label">Pino、metrics、trace adapter、debug API、重启恢复和 fault injection。</span></div>
+        <div class="timeline-item"><strong>P5 · 硬化和验收（0.5–1 天）</strong><br><span class="label">脱敏测试、权限检查、长消息分片、OAuth 过期、iLink 网络错误、文档和一键启动。</span></div>
+      </div>
+      <p><strong>预估：</strong>一名熟悉 TypeScript 的开发者约 6–9 个工作日完成兼容性 Spike、可演示 MVP 与基础恢复验证；不包含 iLink 协议临时变化、账号灰度资格、政策确认或 OAuth 外部故障导致的等待。</p>
+    </section>
+
+    <section id="acceptance">
+      <h2>14. MVP 验收标准</h2>
+      <div class="grid g2">
+        <div class="card">
+          <h3>功能</h3>
+          <ol>
+            <li>首次启动可展示二维码并完成 iLink 登录。</li>
+            <li>微信发送文本后，Pi 使用 <code>openai-codex</code> 生成回答并回复。</li>
+            <li>连续发送 3 条消息时按顺序回复，不并发污染上下文。</li>
+            <li><code>/new</code> 创建新 Pi Session；<code>/status</code> 返回脱敏状态。</li>
+            <li>超过单条限制的回复可安全分片。</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>可靠性与诊断</h3>
+          <ol>
+            <li>在消息入库后 kill 进程，重启后仍能处理该消息。</li>
+            <li>同一 iLink message 重投不会创建第二个 Turn。</li>
+            <li>send 超时会进入 outbox retry，并可看到 attempt。</li>
+            <li>任一失败可用 turn_id 查到完整 Step 树和根因分类。</li>
+            <li>日志扫描测试证明 token、Authorization 和 context_token 未泄漏。</li>
+          </ol>
+        </div>
+      </div>
+      <h3>建议的演示脚本</h3>
+      <pre><code>1. 启动服务，展示 /readyz 因“iLink 未登录”返回 not-ready
+2. 扫码后 ready
+3. 微信发送：“用三点说明这个 Agent MVP 的主要风险”
+4. 展示 typing → 最终回复
+5. 用 turn_id 打开 /debug/turns/:id，展示 llm_round / send Step（可选只读工具 profile 再展示 tool_call）
+6. 发送第二条追问，证明 Session 上下文延续
+7. 重启进程，再次追问，证明 Pi JSONL 与 SQLite 映射恢复
+8. 展示 /metrics 和脱敏 JSON log</code></pre>
+    </section>
+
+    <section id="risks">
+      <h2>15. 风险与待确认项</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>风险</th><th>影响</th><th>MVP 应对</th></tr></thead>
+        <tbody>
+          <tr><td>iLink 协议并非稳定公共 OpenAPI</td><td>字段、header、登录或路由发生变化</td><td>隔离 adapter、pin 官方参考 commit、contract fixture、启动自检。</td></tr>
+          <tr><td>账号未获得 ClawBot/iLink 能力</td><td>二维码或授权流程无法完成</td><td>P0 首先验证，不进入后续开发。</td></tr>
+          <tr><td>Codex 订阅 OAuth 条件变化</td><td>登录失败、模型不可用，或无人值守桥接不符合当前政策/额度</td><td>P0 核对当前 OpenAI/Pi 文档与账号政策；readiness 检查；模型配置化；不承诺 API key 自动兜底。</td></tr>
+          <tr><td>sender ID 语义未验证</td><td>allowlist 可能绑定到不稳定标识，造成越权或误拒绝</td><td>真实 payload Spike；只用实测不可变 ID，显示名绝不鉴权。</td></tr>
+          <tr><td>Pi API/包名继续演进</td><td>SDK 代码失效</td><td>精确 pin <code>@earendil-works/pi-*</code> 版本并锁定 Node 版本。</td></tr>
+          <tr><td>工具越权</td><td>微信 prompt 导致本机文件、内网或命令风险</td><td>显式工具白名单；Skill/文件路径 jail；写入独立沙箱；公网 HTTPS 校验。本机 Bash 默认关闭；若显式开启，必须接受其拥有完整 OS 用户权限的风险。</td></tr>
+          <tr><td>SQLite 与 Pi JSONL 双持久化不一致</td><td>Turn 找不到对应 Pi 上下文</td><td>SQLite 保存文件引用；打开失败则归档旧 Session，不伪造恢复。</td></tr>
+          <tr><td>发送结果不确定</td><td>网络超时后重复回复</td><td>稳定 client_id + outbox；实测服务端幂等，文档不承诺 exactly-once。</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout"><strong>进入编码前必须关闭的 Gate：</strong>当前微信账号能够直连完成 ClawBot/iLink 扫码、收发和 sender ID 鉴权验证；应用内 <code>ModelRuntime.login() → ChatGPT Plus/Pro (Codex)</code> 在目标机器上成功，Provider catalog 能返回可用模型，并确认个人本地无人值守桥接符合当前账号政策与额度。不要只凭“登录成功”推断长期支持。</div>
+    </section>
+
+    <section id="sources">
+      <h2>16. 参考资料</h2>
+      <ul>
+        <li><a href="https://github.com/Tencent/openclaw-weixin" target="_blank" rel="noreferrer">Tencent/openclaw-weixin 官方仓库</a></li>
+        <li><a href="https://github.com/Tencent/openclaw-weixin/blob/main/README.md" target="_blank" rel="noreferrer">iLink Backend API Protocol</a></li>
+        <li><a href="https://github.com/Tencent/openclaw-weixin/blob/main/src/api/api.ts" target="_blank" rel="noreferrer">iLink HTTP API 官方参考实现</a></li>
+        <li><a href="https://github.com/Tencent/openclaw-weixin/blob/main/src/api/types.ts" target="_blank" rel="noreferrer">iLink 消息与 API 类型</a></li>
+        <li><a href="https://github.com/earendil-works/pi" target="_blank" rel="noreferrer">Pi Agent Toolkit 官方仓库</a></li>
+        <li><a href="https://pi.dev/docs/latest/sdk" target="_blank" rel="noreferrer">Pi Coding Agent SDK 文档</a></li>
+        <li><a href="https://pi.dev/docs/latest/providers" target="_blank" rel="noreferrer">Pi Providers 与 Codex OAuth 文档</a></li>
+        <li><a href="https://github.com/earendil-works/pi/blob/main/packages/ai/README.md" target="_blank" rel="noreferrer">pi-ai 统一 LLM API 与 Provider 列表</a></li>
+        <li><a href="https://github.com/earendil-works/pi/blob/main/packages/agent/README.md" target="_blank" rel="noreferrer">pi-agent-core Agent loop 文档</a></li>
+        <li><a href="https://help.openai.com/en/articles/11381614-api-codex-cli-and-sign-in-with-chatgpt" target="_blank" rel="noreferrer">OpenAI Codex CLI 与 ChatGPT 登录说明</a></li>
+        <li><a href="https://github.com/earendil-works/pi/tree/main/packages/telemetry" target="_blank" rel="noreferrer">Pi Telemetry contracts</a></li>
+      </ul>
+      <p class="label">调研基线：Pi <code>0.84.3</code>、Tencent openclaw-weixin <code>2.4.6</code>。实现时应重新核对最新版本、协议和服务条款。</p>
+    </section>
+
+    <footer class="footer">
+      <strong>WeChat Pi Agent MVP</strong> · 本方案采用“本地单用户、文本回复与图片理解、显式工具白名单、可恢复、可观测”的最小闭环。<br>
+      文档为技术设计，不代表腾讯 iLink 或 OpenAI Codex 的服务可用性与长期兼容承诺。
+    </footer>
+  </main>
+</div>
+</body>
+</html>
