@@ -1,6 +1,6 @@
-import type { ChannelPort } from "../ports/channel.port.js";
-import type { ControlPlanePort } from "../ports/control-plane.port.js";
-import { noopTelemetry, type TelemetryPort } from "../ports/telemetry.port.js";
+import type { Channel } from "../interfaces/channel.js";
+import type { ControlPlane } from "../interfaces/control-plane.js";
+import { noopTelemetry, type Telemetry } from "../interfaces/telemetry.js";
 import { systemClock, type Clock } from "../../shared/clock.js";
 
 export interface DeliverReplyOptions {
@@ -21,11 +21,11 @@ export class DeliverReply {
   private readonly retryDelaysMs: readonly number[];
 
   public constructor(
-    private readonly controlPlane: ControlPlanePort,
-    private readonly channel: ChannelPort,
+    private readonly controlPlane: ControlPlane,
+    private readonly channel: Channel,
     private readonly options: DeliverReplyOptions,
     private readonly clock: Clock = systemClock,
-    private readonly telemetry: TelemetryPort = noopTelemetry,
+    private readonly telemetry: Telemetry = noopTelemetry,
   ) {
     this.leaseMs = options.leaseMs ?? 30_000;
     this.maxAttempts = options.maxAttempts ?? 5;

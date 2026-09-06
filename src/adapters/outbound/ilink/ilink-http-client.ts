@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { ChannelPort } from "../../../application/ports/channel.port.js";
+import type { Channel } from "../../../application/interfaces/channel.js";
 import type { InboundBatch, InboundMessage } from "../../../domain/messaging/inbound-message.js";
 import type { OutboundMessage } from "../../../domain/messaging/outbound-message.js";
 import { downloadILinkImage } from "./ilink-image-downloader.js";
@@ -26,7 +26,7 @@ export class ILinkProtocolError extends Error {
   }
 }
 
-export class ILinkHttpClient implements ChannelPort {
+export class ILinkHttpClient implements Channel {
   private readonly fetchImpl: typeof globalThis.fetch;
 
   public constructor(private readonly options: ILinkHttpClientOptions) {

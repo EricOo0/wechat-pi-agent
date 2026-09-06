@@ -207,7 +207,7 @@
               <div class="node"><strong>RecoverWork</strong><small>启动恢复 + lease</small></div>
             </div>
           </div>
-          <div class="arch-down">↓ 只操作领域对象与 Ports</div>
+          <div class="arch-down">↓ 只操作领域对象与接口</div>
           <div class="arch-band">
             <div class="arch-band-label">Domain</div>
             <div class="arch-band-body">
@@ -218,11 +218,11 @@
               <div class="node"><strong>Policy</strong><small>Sender allowlist · ToolPolicy</small></div>
             </div>
           </div>
-          <div class="arch-down">↑ 实现 Ports；依赖方向始终指向 Domain / Application</div>
+          <div class="arch-down">↑ 实现接口；依赖方向始终指向 Domain / Application</div>
           <div class="arch-band">
             <div class="arch-band-label">Outbound Adapters</div>
             <div class="arch-band-body">
-              <div class="node"><strong>PiAgentGateway</strong><small>应用侧唯一 AgentPort 实现</small></div><div class="arrow">→</div>
+              <div class="node"><strong>PiAgentGateway</strong><small>应用侧唯一 Agent 实现</small></div><div class="arrow">→</div>
               <div class="node"><strong>pi-coding-agent SDK</strong><small>AgentSession · JSONL · events</small></div><div class="arrow">→</div>
               <div class="node"><strong>pi-agent-core</strong><small>Agent loop · tool loop</small></div><div class="arrow">→</div>
               <div class="node"><strong>pi-ai</strong><small>model catalog · provider API</small></div><div class="arrow">→</div>
@@ -241,7 +241,7 @@
           </div>
         </div>
         <div class="arch-note">
-          <div><strong>请求主链：</strong>iLink Poller → IngestMessage → SQLite inbox → RunTurn → AgentPort → Pi SDK → Codex。</div>
+          <div><strong>请求主链：</strong>iLink Poller → IngestMessage → SQLite inbox → RunTurn → Agent → Pi SDK → Codex。</div>
           <div><strong>回复主链：</strong>Pi event/final text → DeliverReply → SQLite outbox → iLink Sender → 微信用户。</div>
           <div><strong>恢复依据：</strong>SQLite 管业务执行；Pi JSONL 管模型上下文；二者只用 <code>pi_session_id</code> / locator 关联。</div>
         </div>
@@ -400,7 +400,7 @@
   tools: [<span class="s">"read"</span>, <span class="s">"list_files"</span>, <span class="s">"sandbox_write"</span>, <span class="s">"http_get"</span>],
 });
 
-<span class="c">// PiAgentGateway 内部调用；Application 层只看 AgentPort。</span>
+<span class="c">// PiAgentGateway 内部调用；Application 层只看 Agent。</span>
 <span class="k">await</span> session.prompt(userText);</code></pre>
       <div class="callout warn"><strong>模型 ID 不写死到业务逻辑：</strong>Provider 固定为配置项 <code>PI_PROVIDER=openai-codex</code>，模型用 <code>PI_MODEL_ID</code>，thinking 用 <code>PI_THINKING_LEVEL</code>。启动时由 adapter 验证 provider、模型和 OAuth；业务 use case 不认识这些配置细节。示例模型名仅为占位，必须以目标账号当时可见 catalog 为准。</div>
       <h3>5.5 Pi 事件如何进入 Step</h3>
@@ -627,7 +627,7 @@ PRAGMA busy_timeout = 5000;</code></pre>
 
     <section id="structure">
       <h2>12. 预期文件结构与领域分层</h2>
-      <p class="sub">采用轻量 Hexagonal Architecture：<strong>Domain → Application → Ports ← Adapters</strong>。目录按依赖规则而不是第三方库名字组织，Pi 与 iLink 都只能出现在 adapter / infrastructure 层。</p>
+      <p class="sub">采用轻量 Hexagonal Architecture：<strong>Domain → Application → Interfaces ← Adapters</strong>。目录按依赖规则而不是第三方库名字组织，Pi 与 iLink 都只能出现在 adapter / infrastructure 层。</p>
 
       <h3>12.1 领域划分</h3>
       <div class="grid g4">
@@ -647,7 +647,7 @@ PRAGMA busy_timeout = 5000;</code></pre>
 │  ├─ bootstrap/                         # 唯一 composition root
 │  │  ├─ main.ts                         # 组装依赖 + graceful shutdown
 │  │  ├─ config.ts                       # zod 校验后的 AppConfig
-│  │  └─ container.ts                    # ports -> adapters wiring
+│  │  └─ container.ts                    # interfaces -> adapters wiring
 │  │
 │  ├─ prompts/
 │  │  └─ wechat-assistant.md             # 独立、可审查的 System Prompt
@@ -672,16 +672,16 @@ PRAGMA busy_timeout = 5000;</code></pre>
 │  │     ├─ sender-policy.ts
 │  │     └─ tool-policy.ts
 │  │
-│  ├─ application/                       # 用例编排；只依赖 domain + ports
-│  │  ├─ ports/
-│  │  │  ├─ agent.port.ts                # run/resume/cancel Agent turn
-│  │  │  ├─ channel.port.ts              # poll/send/typing
-│  │  │  ├─ repositories.port.ts         # UnitOfWork + repositories
-│  │  │  ├─ credential-store.port.ts
-│  │  │  └─ telemetry.port.ts
+│  ├─ application/                       # 用例编排；只依赖 domain + interfaces
+│  │  ├─ interfaces/
+│  │  │  ├─ agent.ts                       # run/resume/cancel Agent turn
+│  │  │  ├─ channel.ts                     # poll/send/typing
+│  │  │  ├─ repositories.ts                # UnitOfWork + repositories
+│  │  │  ├─ credential-store.ts
+│  │  │  └─ telemetry.ts
 │  │  ├─ use-cases/
 │  │  │  ├─ ingest-message.ts             # inbox + cursor 原子提交
-│  │  │  ├─ run-next-turn.ts              # claim + FIFO + AgentPort
+│  │  │  ├─ run-next-turn.ts              # claim + FIFO + Agent
 │  │  │  ├─ deliver-reply.ts              # outbox 发送与重试
 │  │  │  ├─ recover-interrupted-work.ts
 │  │  │  └─ start-new-session.ts
@@ -699,10 +699,10 @@ PRAGMA busy_timeout = 5000;</code></pre>
 │  │  └─ outbound/
 │  │     ├─ ilink/
 │  │     │  ├─ ilink-client.ts             # HTTP 协议实现
-│  │     │  ├─ ilink-sender.ts             # ChannelPort 实现
+│  │     │  ├─ ilink-sender.ts             # Channel 实现
 │  │     │  └─ qr-login.ts
 │  │     ├─ pi/
-│  │     │  ├─ pi-agent-gateway.ts         # AgentPort 的唯一 Pi 实现
+│  │     │  ├─ pi-agent-gateway.ts         # Agent 的唯一 Pi 实现
 │  │     │  ├─ pi-runtime.ts               # ModelRuntime + pi-ai model
 │  │     │  ├─ pi-session-registry.ts      # 业务 session ↔ Pi JSONL
 │  │     │  ├─ pi-event-mapper.ts          # Pi event → StepEvent
@@ -747,7 +747,7 @@ PRAGMA busy_timeout = 5000;</code></pre>
         <thead><tr><th>目录</th><th>可以依赖</th><th>禁止依赖</th></tr></thead>
         <tbody>
           <tr><td><code>domain/**</code></td><td>同层领域代码、极少量标准库</td><td>Pi、iLink、SQLite、HTTP、Pino、环境变量</td></tr>
-          <tr><td><code>application/**</code></td><td><code>domain/**</code>、<code>application/ports/**</code></td><td><code>adapters/**</code> 和任何具体 SDK</td></tr>
+          <tr><td><code>application/**</code></td><td><code>domain/**</code>、<code>application/interfaces/**</code></td><td><code>adapters/**</code> 和任何具体 SDK</td></tr>
           <tr><td><code>adapters/**</code></td><td>它实现的 port、domain DTO、第三方 SDK</td><td>跨 adapter 直接调用；必须经 port / use case</td></tr>
           <tr><td><code>bootstrap/**</code></td><td>所有层</td><td>承载业务规则；这里只做配置和 wiring</td></tr>
         </tbody>

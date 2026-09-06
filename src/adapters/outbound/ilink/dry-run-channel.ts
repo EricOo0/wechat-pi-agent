@@ -1,8 +1,8 @@
-import type { ChannelPort } from "../../../application/ports/channel.port.js";
+import type { Channel } from "../../../application/interfaces/channel.js";
 import type { InboundBatch } from "../../../domain/messaging/inbound-message.js";
 import type { OutboundMessage } from "../../../domain/messaging/outbound-message.js";
 
-export class DryRunChannel implements ChannelPort {
+export class DryRunChannel implements Channel {
   public readonly sent: OutboundMessage[] = [];
 
   public async getUpdates(accountId: string, cursor: string, signal: AbortSignal): Promise<InboundBatch> {

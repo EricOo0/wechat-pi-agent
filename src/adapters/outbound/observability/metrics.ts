@@ -1,7 +1,7 @@
 import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from "prom-client";
-import type { TelemetryPort } from "../../../application/ports/telemetry.port.js";
+import type { Telemetry } from "../../../application/interfaces/telemetry.js";
 
-export class PrometheusTelemetry implements TelemetryPort {
+export class PrometheusTelemetry implements Telemetry {
   public readonly registry = new Registry();
   private readonly counters = new Map<string, Counter<string>>();
   private readonly histograms = new Map<string, Histogram<string>>();

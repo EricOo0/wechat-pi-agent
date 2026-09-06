@@ -13,9 +13,9 @@ describe("loadSystemPrompt", () => {
   it("loads the standalone WeChat assistant prompt", async () => {
     const prompt = await loadSystemPrompt(resolve("src/prompts/wechat-assistant.md"));
 
-    expect(prompt).toContain("WeChat Private Assistant");
-    expect(prompt).toContain("You may use only the tools explicitly exposed");
-    expect(prompt).toContain("Security and instruction hierarchy");
+    expect(prompt).toContain("微信私人助手");
+    expect(prompt).toContain("申请工具不能授予权限");
+    expect(prompt).toContain("安全与指令层级");
   });
 
   it("rejects an empty prompt file", async () => {

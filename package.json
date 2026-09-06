@@ -10,7 +10,7 @@
     "dev": "tsx src/bootstrap/main.ts",
     "ilink:login": "tsx src/bootstrap/ilink-login.ts",
     "start": "node dist/bootstrap/main.js",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/clean-build.mjs && tsc -p tsconfig.build.json && node scripts/copy-sandbox-workers.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -18,6 +18,7 @@
     "check": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.75",
     "@earendil-works/pi-agent-core": "0.84.3",
     "@earendil-works/pi-ai": "0.84.3",
     "@earendil-works/pi-coding-agent": "0.84.3",

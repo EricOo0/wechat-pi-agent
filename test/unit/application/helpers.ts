@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ControlPlanePort } from "../../../src/application/ports/control-plane.port.js";
+import type { ControlPlane } from "../../../src/application/interfaces/control-plane.js";
 import type { ClaimedTurn } from "../../../src/domain/execution/turn.js";
 import type { ClaimedOutbox } from "../../../src/domain/delivery/outbox-message.js";
 import type { InboundBatch, InboundMessage } from "../../../src/domain/messaging/inbound-message.js";
@@ -67,12 +67,14 @@ export function claimedOutbox(attemptNo = 1): ClaimedOutbox {
   };
 }
 
-export function controlPlane(overrides: Partial<ControlPlanePort> = {}): ControlPlanePort {
+export function controlPlane(overrides: Partial<ControlPlane> = {}): ControlPlane {
   return {
     migrate: vi.fn(),
     healthCheck: vi.fn(() => ({ ready: true })),
     getCursor: vi.fn(() => ""),
     ingestBatch: vi.fn(() => ({ inserted: 0, rejected: 0 })),
+    getMessageSession: vi.fn(() => undefined),
+    getPersistedMessage: vi.fn(() => undefined),
     claimNextTurn: vi.fn(() => undefined),
     appendAgentEvent: vi.fn(),
     recordAgentInvocation: vi.fn(),

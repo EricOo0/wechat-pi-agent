@@ -1,18 +1,18 @@
 import type { Logger } from "pino";
-import type { ChannelPort } from "../../../application/ports/channel.port.js";
-import type { ControlPlanePort } from "../../../application/ports/control-plane.port.js";
-import type { TelemetryPort } from "../../../application/ports/telemetry.port.js";
+import type { Channel } from "../../../application/interfaces/channel.js";
+import type { ControlPlane } from "../../../application/interfaces/control-plane.js";
+import type { Telemetry } from "../../../application/interfaces/telemetry.js";
 import type { IngestMessage } from "../../../application/use-cases/ingest-message.js";
 import { sleep } from "../../../shared/sleep.js";
 import type { RuntimeHealth } from "../admin-http/runtime-health.js";
 
 export interface PollLoopOptions {
   accountId: string;
-  channel: ChannelPort;
-  control: ControlPlanePort;
+  channel: Channel;
+  control: ControlPlane;
   ingest: IngestMessage;
   health: RuntimeHealth;
-  telemetry: TelemetryPort;
+  telemetry: Telemetry;
   logger: Logger;
 }
 

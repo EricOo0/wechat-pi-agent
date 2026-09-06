@@ -19,6 +19,11 @@ export default tseslint.config(
     },
   },
   {
+    ...tseslint.configs.disableTypeChecked,
+    files: ["**/*.mjs"],
+    languageOptions: { globals: { process: "readonly", Buffer: "readonly", URL: "readonly" } },
+  },
+  {
     ignores: ["dist/**", "node_modules/**", "output/**", ".playwright-cli/**"],
   },
 );

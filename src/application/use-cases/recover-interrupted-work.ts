@@ -1,5 +1,5 @@
-import type { ControlPlanePort } from "../ports/control-plane.port.js";
-import { noopTelemetry, type TelemetryPort } from "../ports/telemetry.port.js";
+import type { ControlPlane } from "../interfaces/control-plane.js";
+import { noopTelemetry, type Telemetry } from "../interfaces/telemetry.js";
 import { systemClock, type Clock } from "../../shared/clock.js";
 
 export interface RecoverInterruptedWorkResult {
@@ -9,9 +9,9 @@ export interface RecoverInterruptedWorkResult {
 
 export class RecoverInterruptedWork {
   public constructor(
-    private readonly controlPlane: ControlPlanePort,
+    private readonly controlPlane: ControlPlane,
     private readonly clock: Clock = systemClock,
-    private readonly telemetry: TelemetryPort = noopTelemetry,
+    private readonly telemetry: Telemetry = noopTelemetry,
   ) {}
 
   public execute(now: Date = this.clock.now()): RecoverInterruptedWorkResult {

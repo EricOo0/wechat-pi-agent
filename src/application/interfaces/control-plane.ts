@@ -1,9 +1,9 @@
-import type { InboundBatch } from "../../domain/messaging/inbound-message.js";
+import type { InboundBatch, InboundMessage } from "../../domain/messaging/inbound-message.js";
 import type { ClaimedTurn } from "../../domain/execution/turn.js";
 import type { AgentEvent } from "../../domain/execution/step.js";
 import type { ClaimedOutbox } from "../../domain/delivery/outbox-message.js";
 import type { ConversationSession } from "../../domain/conversation/session.js";
-import type { AgentInvocationTrace } from "./agent.port.js";
+import type { AgentInvocationTrace } from "./agent.js";
 
 export interface CompleteTurnInput {
   turnId: string;
@@ -11,6 +11,7 @@ export interface CompleteTurnInput {
   chunks: readonly string[];
   piSessionId?: string;
   piSessionFile?: string;
+  continuation?: { permissionRequestId: string; sourceTurnId: string };
 }
 
 export interface FailTurnInput {
@@ -19,11 +20,13 @@ export interface FailTurnInput {
   errorMessage: string;
 }
 
-export interface ControlPlanePort {
+export interface ControlPlane {
   migrate(): void;
   healthCheck(): { ready: boolean; reason?: string };
   getCursor(accountId: string): string;
   ingestBatch(batch: InboundBatch): { inserted: number; rejected: number };
+  getMessageSession(accountId: string, channelMessageId: string): string | undefined;
+  getPersistedMessage(accountId: string, channelMessageId: string): InboundMessage | undefined;
   claimNextTurn(ownerId: string, leaseMs: number): ClaimedTurn | undefined;
   appendAgentEvent(turnId: string, event: AgentEvent): void;
   recordAgentInvocation(turnId: string, trace: AgentInvocationTrace): void;

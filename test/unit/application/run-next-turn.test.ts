@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentPort, AgentRunRequest } from "../../../src/application/ports/agent.port.js";
-import type { ChannelPort } from "../../../src/application/ports/channel.port.js";
+import type { Agent, AgentRunRequest } from "../../../src/application/interfaces/agent.js";
+import type { Channel } from "../../../src/application/interfaces/channel.js";
 import { ReplyChunker } from "../../../src/application/services/reply-chunker.js";
 import { RunNextTurn } from "../../../src/application/use-cases/run-next-turn.js";
 import { claimedTurn, controlPlane, now } from "./helpers.js";
 
-function channel(setTyping: ChannelPort["setTyping"] = vi.fn(() => Promise.resolve())): ChannelPort {
+function channel(setTyping: Channel["setTyping"] = vi.fn(() => Promise.resolve())): Channel {
   return {
     getUpdates: vi.fn(),
     sendText: vi.fn(),
@@ -26,11 +26,11 @@ describe("RunNextTurn", () => {
       request.onEvent?.(event);
       return Promise.resolve({ text: "hello world", piSessionId: "pi-1" });
     });
-    const agent: AgentPort = {
+    const agent: Agent = {
       checkReady: vi.fn(() => Promise.resolve({ ready: true })),
       runTurn,
     };
-    const typing = vi.fn<NonNullable<ChannelPort["setTyping"]>>(() => Promise.resolve());
+    const typing = vi.fn<NonNullable<Channel["setTyping"]>>(() => Promise.resolve());
     const claim = claimedTurn();
     claim.message.images = [{ path: "/tmp/image.png", mimeType: "image/png", bytes: 8 }];
     const useCase = new RunNextTurn(
@@ -64,8 +64,8 @@ describe("RunNextTurn", () => {
 
   it("fails the claimed turn and always clears typing when the agent rejects", async () => {
     const failTurn = vi.fn();
-    const typing = vi.fn<NonNullable<ChannelPort["setTyping"]>>(() => Promise.resolve());
-    const agent: AgentPort = {
+    const typing = vi.fn<NonNullable<Channel["setTyping"]>>(() => Promise.resolve());
+    const agent: Agent = {
       checkReady: vi.fn(() => Promise.resolve({ ready: true })),
       runTurn: vi.fn(() => Promise.reject(new Error("provider unavailable"))),
     };
@@ -93,7 +93,7 @@ describe("RunNextTurn", () => {
     const archiveActiveSession = vi.fn();
     const completeTurn = vi.fn();
     const runTurn = vi.fn(() => Promise.reject(new Error("must not run")));
-    const agent: AgentPort = {
+    const agent: Agent = {
       checkReady: vi.fn(() => Promise.resolve({ ready: true })),
       runTurn,
     };

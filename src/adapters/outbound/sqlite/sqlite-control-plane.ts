@@ -1,12 +1,12 @@
 import { DatabaseSync } from "node:sqlite";
 import type { PathLike } from "node:fs";
 
-import type { AgentInvocationTrace } from "../../../application/ports/agent.port.js";
+import type { AgentInvocationTrace } from "../../../application/interfaces/agent.js";
 import type {
   CompleteTurnInput,
-  ControlPlanePort,
+  ControlPlane,
   FailTurnInput,
-} from "../../../application/ports/control-plane.port.js";
+} from "../../../application/interfaces/control-plane.js";
 import { sessionKey, type ConversationSession } from "../../../domain/conversation/session.js";
 import type { ClaimedOutbox, OutboxRecord } from "../../../domain/delivery/outbox-message.js";
 import type { AgentEvent } from "../../../domain/execution/step.js";
@@ -55,7 +55,7 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-export class SqliteControlPlane implements ControlPlanePort {
+export class SqliteControlPlane implements ControlPlane {
   private readonly db: DatabaseSync;
   private readonly traceRetention: number;
 
@@ -97,6 +97,17 @@ export class SqliteControlPlane implements ControlPlanePort {
   public getCursor(accountId: string): string {
     const row = this.db.prepare("SELECT value FROM cursor WHERE account_id = ?").get(accountId) as SqliteRow | undefined;
     return row === undefined ? "" : text(row, "value");
+  }
+
+  public getMessageSession(accountId: string, channelMessageId: string): string | undefined {
+    const row = this.db.prepare(`SELECT t.session_id FROM inbox i JOIN turns t ON t.inbox_id=i.id
+      WHERE i.account_id=? AND i.channel_message_id=?`).get(accountId, channelMessageId);
+    return row === undefined ? undefined : String(row.session_id);
+  }
+
+  public getPersistedMessage(accountId: string, channelMessageId: string): InboundMessage | undefined {
+    const row = this.db.prepare("SELECT * FROM inbox WHERE account_id=? AND channel_message_id=?").get(accountId, channelMessageId);
+    return row === undefined ? undefined : this.toMessage(row);
   }
 
   public ingestBatch(batch: InboundBatch): { inserted: number; rejected: number } {
@@ -204,15 +215,17 @@ export class SqliteControlPlane implements ControlPlanePort {
       if (exists === undefined) throw new Error(`Turn not found: ${turnId}`);
       this.db.prepare(`
         INSERT INTO agent_traces
-          (turn_id, provider, model_id, system_prompt, skills_json, tools_json, captured_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+          (turn_id, provider, model_id, system_prompt, skills_json, tools_json, captured_at, permission_revision, permission_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(turn_id) DO UPDATE SET
           provider = excluded.provider,
           model_id = excluded.model_id,
           system_prompt = excluded.system_prompt,
           skills_json = excluded.skills_json,
           tools_json = excluded.tools_json,
-          captured_at = excluded.captured_at
+          captured_at = excluded.captured_at,
+          permission_revision = excluded.permission_revision,
+          permission_mode = excluded.permission_mode
       `).run(
         turnId,
         trace.provider,
@@ -221,6 +234,8 @@ export class SqliteControlPlane implements ControlPlanePort {
         serialize(trace.skills),
         serialize(trace.tools),
         nowIso(),
+        trace.permissionRevision ?? null,
+        trace.permissionMode ?? null,
       );
       this.db.prepare(`
         DELETE FROM agent_traces WHERE turn_id IN (
@@ -260,7 +275,29 @@ export class SqliteControlPlane implements ControlPlanePort {
           index, chunk, id, text(row, "run_id"), timestamp, timestamp, timestamp,
         );
       });
+      if (input.continuation) this.enqueuePermissionContinuation(input.turnId, input.continuation, timestamp);
     });
+  }
+
+  /** Runs inside completeTurn's transaction: reply and unique continuation commit together. */
+  private enqueuePermissionContinuation(approvalTurnId: string, continuation: NonNullable<CompleteTurnInput["continuation"]>, timestamp: string): void {
+    const exists = this.db.prepare("SELECT 1 FROM permission_continuations WHERE permission_request_id=?").get(continuation.permissionRequestId);
+    if (exists) return;
+    const approval = this.loadClaimedTurn(approvalTurnId);
+    const source = this.loadClaimedTurn(continuation.sourceTurnId);
+    if (source.session.id !== approval.session.id || source.session.status !== "ACTIVE"
+      || source.message.senderId !== approval.message.senderId || source.message.accountId !== approval.message.accountId
+      || source.message.peerId !== approval.message.peerId) throw new Error("Permission continuation source does not match the confirmed user/session");
+    const inboxId = newId("msg");
+    const turnId = newId("trn");
+    const prompt = `用户已确认本任务的权限申请（${continuation.permissionRequestId}）。请检查当前权限和已有会话／工具结果，从被权限阻塞的位置继续；不要从头重复已经完成的操作。若任务已完成，只说明结果。\n\n原始任务：\n${source.message.text}`;
+    this.db.prepare(`INSERT INTO inbox (id,account_id,channel_message_id,peer_id,sender_id,context_token,text,received_at,images_json,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(inboxId, approval.message.accountId, `permission-resume:${continuation.permissionRequestId}`,
+      approval.message.peerId, approval.message.senderId, approval.message.contextToken ?? null, prompt, timestamp, serialize(source.message.images), timestamp);
+    this.db.prepare(`INSERT INTO turns (id,session_id,inbox_id,trace_id,run_id,status,queued_at,created_at,updated_at)
+      VALUES (?,?,?,?,?,'QUEUED',?,?,?)`).run(turnId, source.session.id, inboxId, newId("evt"), newId("run"), timestamp, timestamp, timestamp);
+    this.db.prepare("INSERT INTO permission_continuations VALUES (?,?,?,?,?)")
+      .run(continuation.permissionRequestId, source.turn.id, approvalTurnId, turnId, timestamp);
   }
 
   public failTurn(input: FailTurnInput): void {
@@ -442,7 +479,7 @@ export class SqliteControlPlane implements ControlPlanePort {
   public getRecentAgentTraces(limit: number): readonly unknown[] {
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
     const rows = this.db.prepare(`
-      SELECT a.turn_id, a.provider, a.model_id, a.skills_json, a.tools_json, a.captured_at,
+      SELECT a.turn_id, a.provider, a.model_id, a.skills_json, a.tools_json, a.captured_at, a.permission_revision, a.permission_mode,
         t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
         i.text AS user_prompt
       FROM agent_traces a
@@ -462,6 +499,8 @@ export class SqliteControlPlane implements ControlPlanePort {
       errorMessage: nullableText(row, "error_message"),
       skills: json(text(row, "skills_json")),
       tools: json(text(row, "tools_json")),
+      permissionRevision: row.permission_revision == null ? undefined : Number(row.permission_revision),
+      permissionMode: nullableText(row, "permission_mode"),
       capturedAt: date(text(row, "captured_at")),
       startedAt: nullableText(row, "started_at") === undefined ? undefined : date(text(row, "started_at")),
       completedAt: nullableText(row, "completed_at") === undefined ? undefined : date(text(row, "completed_at")),
@@ -494,6 +533,8 @@ export class SqliteControlPlane implements ControlPlanePort {
       provider: text(row, "provider"),
       modelId: text(row, "model_id"),
       systemPrompt: text(row, "system_prompt"),
+      permissionRevision: row.permission_revision == null ? undefined : Number(row.permission_revision),
+      permissionMode: nullableText(row, "permission_mode"),
       skills: json(text(row, "skills_json")),
       tools: json(text(row, "tools_json")),
       userPrompt: text(row, "user_prompt"),
@@ -543,7 +584,13 @@ export class SqliteControlPlane implements ControlPlanePort {
         context_token: row.context_token, text: row.inbox_text, received_at: row.received_at, raw_json: row.raw_json,
         images_json: row.images_json,
       }),
+      ...this.continuationForTurn(turnId),
     };
+  }
+
+  private continuationForTurn(turnId: string): Pick<ClaimedTurn, "continuation"> {
+    const row = this.db.prepare("SELECT permission_request_id,source_turn_id FROM permission_continuations WHERE continuation_turn_id=?").get(turnId);
+    return row === undefined ? {} : { continuation: { permissionRequestId: String(row.permission_request_id), sourceTurnId: String(row.source_turn_id) } };
   }
 
   private toSession(row: SqliteRow): ConversationSession {

@@ -41,6 +41,7 @@ export interface ClaimedTurn {
   turn: Turn;
   session: ConversationSession;
   message: InboundMessage;
+  continuation?: { permissionRequestId: string; sourceTurnId: string };
 }
 
 export function assertTurnTransition(from: TurnStatus, to: TurnStatus): void {

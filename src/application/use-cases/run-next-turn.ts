@@ -1,9 +1,10 @@
-import type { AgentPort } from "../ports/agent.port.js";
-import type { ChannelPort } from "../ports/channel.port.js";
-import type { ControlPlanePort } from "../ports/control-plane.port.js";
-import { noopTelemetry, type TelemetryPort } from "../ports/telemetry.port.js";
+import type { Agent } from "../interfaces/agent.js";
+import type { Channel } from "../interfaces/channel.js";
+import type { ControlPlane } from "../interfaces/control-plane.js";
+import { noopTelemetry, type Telemetry } from "../interfaces/telemetry.js";
 import type { ReplyChunker } from "../services/reply-chunker.js";
 import { CommandRouter } from "../services/command-router.js";
+import type { PermissionService } from "../services/permission-service.js";
 
 export interface RunNextTurnOptions {
   ownerId: string;
@@ -19,13 +20,14 @@ export class RunNextTurn {
   private readonly leaseMs: number;
 
   public constructor(
-    private readonly controlPlane: ControlPlanePort,
-    private readonly agent: AgentPort,
-    private readonly channel: ChannelPort,
+    private readonly controlPlane: ControlPlane,
+    private readonly agent: Agent,
+    private readonly channel: Channel,
     private readonly replyChunker: ReplyChunker,
     private readonly options: RunNextTurnOptions,
-    private readonly telemetry: TelemetryPort = noopTelemetry,
+    private readonly telemetry: Telemetry = noopTelemetry,
     private readonly commandRouter: CommandRouter = new CommandRouter(),
+    private readonly permissions?: PermissionService,
   ) {
     this.leaseMs = options.leaseMs ?? 60_000;
   }
@@ -38,12 +40,30 @@ export class RunNextTurn {
 
     const { turn, session, message } = claimed;
     const startedAt = Date.now();
+    if (claimed.continuation && (session.status !== "ACTIVE" || !this.permissions?.canContinue(message, session.id,
+      claimed.continuation.permissionRequestId, claimed.continuation.sourceTurnId))) {
+      const finalResponse = "自动续跑已取消：授权已失效或原会话已结束。";
+      const chunks = this.replyChunker.chunk(finalResponse);
+      this.controlPlane.completeTurn({ turnId: turn.id, finalResponse, chunks });
+      return { status: "completed", turnId: turn.id, finalResponse, chunks };
+    }
+    const permissionReply = claimed.continuation ? undefined : this.permissions?.handleMessage(message, session.id);
+    if (permissionReply !== undefined) {
+      const continuation = session.status === "ACTIVE" ? this.permissions?.continuationFor(message, session.id) : undefined;
+      const chunks = this.replyChunker.chunk(permissionReply);
+      this.controlPlane.completeTurn({ turnId: turn.id, finalResponse: permissionReply, chunks,
+        ...(continuation === undefined ? {} : { continuation }) });
+      return { status: "completed", turnId: turn.id, finalResponse: permissionReply, chunks };
+    }
     const routed = this.commandRouter.route(message.text);
     if (routed.type !== "message") {
       const finalResponse = routed.type === "new"
         ? "已归档当前会话，下一条消息将创建新的上下文。"
         : `状态正常。session=${session.id} turn=${turn.id}`;
-      if (routed.type === "new") this.controlPlane.archiveActiveSession(message.accountId, message.peerId);
+      if (routed.type === "new") {
+        if (this.permissions) this.permissions.endSession(this.permissions.context(message, session.id));
+        this.controlPlane.archiveActiveSession(message.accountId, message.peerId);
+      }
       const chunks = this.replyChunker.chunk(finalResponse);
       this.controlPlane.completeTurn({ turnId: turn.id, finalResponse, chunks });
       this.telemetry.increment("turns_completed", { kind: "command" });
@@ -56,9 +76,11 @@ export class RunNextTurn {
       const result = await this.agent.runTurn({
         session,
         prompt: routed.text,
+        ...(this.permissions === undefined ? {} : { permissionContext: this.permissions.context(message, session.id, turn.id) }),
         ...(message.images === undefined ? {} : { images: message.images }),
         signal,
         onInvocation: (trace) => this.controlPlane.recordAgentInvocation(turn.id, trace),
+        onSessionReady: (id, file) => this.controlPlane.updateSessionPiLocator(session.id, id, file),
         onEvent: (event) => this.controlPlane.appendAgentEvent(turn.id, event),
       });
       const chunks = this.replyChunker.chunk(result.text);

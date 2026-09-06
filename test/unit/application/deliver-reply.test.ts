@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ChannelPort } from "../../../src/application/ports/channel.port.js";
+import type { Channel } from "../../../src/application/interfaces/channel.js";
 import { DeliverReply } from "../../../src/application/use-cases/deliver-reply.js";
 import { claimedOutbox, controlPlane, now } from "./helpers.js";
 
-function channel(sendText: ChannelPort["sendText"]): ChannelPort {
+function channel(sendText: Channel["sendText"]): Channel {
   return { getUpdates: vi.fn(), sendText, checkReady: vi.fn(() => Promise.resolve({ ready: true })) };
 }
 
 describe("DeliverReply", () => {
   it("claims, sends over the network, then marks the outbox sent", async () => {
     const markOutboxSent = vi.fn();
-    const sendText = vi.fn<ChannelPort["sendText"]>(() => Promise.resolve({ remoteRequestId: "remote-1" }));
+    const sendText = vi.fn<Channel["sendText"]>(() => Promise.resolve({ remoteRequestId: "remote-1" }));
     const control = controlPlane({
       claimNextOutbox: vi.fn(() => claimedOutbox()),
       markOutboxSent,
@@ -34,7 +34,7 @@ describe("DeliverReply", () => {
     });
     const useCase = new DeliverReply(
       control,
-      channel(vi.fn<ChannelPort["sendText"]>(() => Promise.reject(error))),
+      channel(vi.fn<Channel["sendText"]>(() => Promise.reject(error))),
       { ownerId: "worker", maxAttempts: 4 },
       { now: () => now },
     );

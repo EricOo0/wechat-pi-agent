@@ -1,12 +1,15 @@
 import { mkdir, readFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import type { AgentSession, AgentSessionEvent, CreateAgentSessionOptions, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent, CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
 import { createAgentSession, DefaultResourceLoader, getAgentDir, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
-import type { AgentPort, AgentRunRequest, AgentRunResult } from "../../../application/ports/agent.port.js";
+import type { Agent, AgentRunRequest, AgentRunResult } from "../../../application/interfaces/agent.js";
 import type { AgentEvent } from "../../../domain/execution/step.js";
 import type { InboundImage } from "../../../domain/messaging/inbound-message.js";
 import { loadSystemPrompt } from "./system-prompt.js";
 import { createAgentTools } from "./tools/index.js";
+import type { PermissionContext, PermissionService } from "../../../application/services/permission-service.js";
+import { PolicyCompiler } from "../../../application/services/policy-compiler.js";
+import type { SandboxExecutor } from "../../../application/interfaces/sandbox-executor.js";
 
 export interface PiAgentGatewayOptions {
   cwd: string;
@@ -20,26 +23,28 @@ export interface PiAgentGatewayOptions {
   systemPromptPath: string;
   loadLocalSkills: boolean;
   toolSandboxRoot: string;
-  httpToolEnabled: boolean;
-  httpAllowedHosts: string[];
-  shellToolEnabled: boolean;
+  permissions: PermissionService;
+  executor: SandboxExecutor;
+  deniedPaths: string[];
+  protectedWritePaths: string[];
+  deniedNetworkPorts: number[];
   allowModelNetwork?: boolean;
 }
 
 interface SessionHandle {
   session: AgentSession;
   manager: SessionManager;
+  context: PermissionContext;
 }
 
-export class PiAgentGateway implements AgentPort {
+export class PiAgentGateway implements Agent {
   private readonly sessions = new Map<string, SessionHandle>();
 
   private constructor(
     private readonly options: PiAgentGatewayOptions,
     private readonly runtime: ModelRuntime,
     private readonly resourceLoader: DefaultResourceLoader,
-    private readonly customTools: ToolDefinition[],
-    private readonly activeToolNames: string[],
+    private readonly compiler: PolicyCompiler,
   ) {}
 
   public static async create(options: PiAgentGatewayOptions): Promise<PiAgentGateway> {
@@ -66,21 +71,20 @@ export class PiAgentGateway implements AgentPort {
     });
     await resourceLoader.reload();
     const skillRoots = resourceLoader.getSkills().skills.map((skill) => skill.baseDir);
-    const customTools = await createAgentTools({
-      sandboxRoot: options.toolSandboxRoot,
+    const compiler = new PolicyCompiler({
+      workspaceBase: options.toolSandboxRoot,
       skillRoots,
-      httpEnabled: options.httpToolEnabled,
-      httpAllowedHosts: options.httpAllowedHosts,
+      deniedPaths: options.deniedPaths,
+      protectedWritePaths: options.protectedWritePaths,
+      deniedNetworkPorts: options.deniedNetworkPorts,
     });
-    const activeToolNames = [
-      ...customTools.map((tool) => tool.name),
-      ...(options.shellToolEnabled ? ["bash"] : []),
-    ];
-    return new PiAgentGateway(options, runtime, resourceLoader, customTools, activeToolNames);
+    return new PiAgentGateway(options, runtime, resourceLoader, compiler);
   }
 
   public async runTurn(request: AgentRunRequest): Promise<AgentRunResult> {
     const handle = await this.getOrCreateSession(request);
+    request.onSessionReady?.(handle.manager.getSessionId(), handle.manager.getSessionFile());
+    const permission = this.options.permissions.snapshot(handle.context);
     request.onInvocation?.({
       systemPrompt: handle.session.systemPrompt,
       provider: this.options.provider,
@@ -91,6 +95,8 @@ export class PiAgentGateway implements AgentPort {
         filePath: skill.filePath,
       })),
       tools: handle.session.getActiveToolNames(),
+      permissionRevision: permission.revision,
+      permissionMode: permission.policy.mode,
     });
     const unsubscribe = handle.session.subscribe((event) => {
       request.onEvent?.(this.mapEvent(event));
@@ -104,6 +110,7 @@ export class PiAgentGateway implements AgentPort {
         throw new Error(`Pi model does not support image input: ${this.options.provider}/${this.options.modelId}`);
       }
       await handle.session.prompt(request.prompt, images.length === 0 ? undefined : { images });
+      if (this.options.permissions.snapshot(handle.context).revision !== permission.revision) throw new Error("Permissions changed; turn cancelled");
       const text = handle.session.getLastAssistantText()?.trim();
       if (!text) throw new Error("Pi completed without assistant text");
       const piSessionFile = handle.manager.getSessionFile();
@@ -136,30 +143,48 @@ export class PiAgentGateway implements AgentPort {
     this.sessions.clear();
   }
 
+  public abortSubject(principalId: string): void {
+    for (const handle of this.sessions.values()) {
+      if (handle.context.subject.principalId === principalId) void handle.session.abort().catch(() => {});
+    }
+  }
+
   private async getOrCreateSession(request: AgentRunRequest): Promise<SessionHandle> {
+    if (!request.permissionContext) throw new Error("Authenticated permission context is required");
     const existing = this.sessions.get(request.session.id);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      if (existing.context.subject.principalId !== request.permissionContext.subject.principalId) throw new Error("Session principal changed");
+      existing.context = request.permissionContext;
+      return existing;
+    }
     const manager = request.session.piSessionFile
       ? SessionManager.open(request.session.piSessionFile, this.options.sessionDir, this.options.cwd)
       : SessionManager.create(this.options.cwd, this.options.sessionDir);
     const model = this.runtime.getModel(this.options.provider, this.options.modelId);
     if (!model) throw new Error(`Pi model not found: ${this.options.provider}/${this.options.modelId}`);
+    const initialContext = request.permissionContext;
+    const customTools = createAgentTools({
+      context: () => this.sessions.get(request.session.id)?.context ?? initialContext,
+      permissions: this.options.permissions, compiler: this.compiler, executor: this.options.executor,
+    });
+    const activeToolNames = customTools.map((tool) => tool.name);
     const { session } = await createAgentSession({
       cwd: this.options.cwd,
       model,
       modelRuntime: this.runtime,
       sessionManager: manager,
       resourceLoader: this.resourceLoader,
-      tools: this.activeToolNames,
-      customTools: this.customTools,
+      tools: activeToolNames,
+      customTools,
       thinkingLevel: this.options.thinkingLevel ?? "medium",
     });
-    const unexpected = session.getActiveToolNames().filter((name) => !this.activeToolNames.includes(name));
-    if (unexpected.length > 0) {
+    const unexpected = session.getActiveToolNames().filter((name) => !activeToolNames.includes(name));
+    const unmanaged = customTools.filter((tool) => session.getToolDefinition(tool.name)?.execute !== tool.execute);
+    if (unexpected.length > 0 || unmanaged.length > 0) {
       session.dispose();
-      throw new Error(`Pi tool policy violation: unexpected tools enabled (${unexpected.join(", ")})`);
+      throw new Error(`Pi tool policy violation: unexpected or unmanaged tools (${[...unexpected, ...unmanaged.map((tool) => tool.name)].join(", ")})`);
     }
-    const handle = { session, manager };
+    const handle = { session, manager, context: request.permissionContext };
     this.sessions.set(request.session.id, handle);
     return handle;
   }

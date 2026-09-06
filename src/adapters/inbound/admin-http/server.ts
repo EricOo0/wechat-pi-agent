@@ -1,8 +1,8 @@
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { Logger } from "pino";
-import type { AgentPort } from "../../../application/ports/agent.port.js";
-import type { ChannelPort } from "../../../application/ports/channel.port.js";
-import type { ControlPlanePort } from "../../../application/ports/control-plane.port.js";
+import type { Agent } from "../../../application/interfaces/agent.js";
+import type { Channel } from "../../../application/interfaces/channel.js";
+import type { ControlPlane } from "../../../application/interfaces/control-plane.js";
 import type { PrometheusTelemetry } from "../../outbound/observability/metrics.js";
 import type { RuntimeHealth } from "./runtime-health.js";
 import { TRACE_PAGE_HTML } from "./trace-page.js";
@@ -10,9 +10,9 @@ import { TRACE_PAGE_HTML } from "./trace-page.js";
 export interface AdminServerOptions {
   host: string;
   port: number;
-  control: ControlPlanePort;
-  channel: ChannelPort;
-  agent: AgentPort;
+  control: ControlPlane;
+  channel: Channel;
+  agent: Agent;
   health: RuntimeHealth;
   telemetry: PrometheusTelemetry;
   logger: Logger;

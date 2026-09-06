@@ -147,4 +147,19 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
     version: 3,
     sql: `ALTER TABLE inbox ADD COLUMN images_json TEXT;`,
   },
+  {
+    version: 4,
+    sql: `ALTER TABLE agent_traces ADD COLUMN permission_revision INTEGER;
+      ALTER TABLE agent_traces ADD COLUMN permission_mode TEXT;`,
+  },
+  {
+    version: 5,
+    sql: `CREATE TABLE permission_continuations (
+      permission_request_id TEXT PRIMARY KEY,
+      source_turn_id TEXT NOT NULL REFERENCES turns(id),
+      approval_turn_id TEXT NOT NULL REFERENCES turns(id),
+      continuation_turn_id TEXT NOT NULL UNIQUE REFERENCES turns(id),
+      created_at TEXT NOT NULL
+    ) STRICT;`,
+  },
 ];

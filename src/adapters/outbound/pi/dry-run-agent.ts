@@ -1,6 +1,6 @@
-import type { AgentPort, AgentRunRequest, AgentRunResult } from "../../../application/ports/agent.port.js";
+import type { Agent, AgentRunRequest, AgentRunResult } from "../../../application/interfaces/agent.js";
 
-export class DryRunAgent implements AgentPort {
+export class DryRunAgent implements Agent {
   public runTurn(request: AgentRunRequest): Promise<AgentRunResult> {
     request.onEvent?.({ type: "agent_start", at: new Date() });
     const text = `[dry-run] ${request.prompt}`;

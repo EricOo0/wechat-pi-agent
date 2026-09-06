@@ -1,8 +1,10 @@
 import { mkdir } from "node:fs/promises";
+import { realpathSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
-import type { AgentPort } from "../application/ports/agent.port.js";
-import type { ChannelPort } from "../application/ports/channel.port.js";
+import type { Agent } from "../application/interfaces/agent.js";
+import type { Channel } from "../application/interfaces/channel.js";
 import { OutboxWorkerLoop } from "../application/use-cases/outbox-worker-loop.js";
 import { TurnWorkerLoop } from "../application/use-cases/turn-worker-loop.js";
 import { DeliverReply } from "../application/use-cases/deliver-reply.js";
@@ -26,6 +28,10 @@ import { SqliteControlPlane } from "../adapters/outbound/sqlite/index.js";
 import { AllowAllSendersPolicy, ExactSenderPolicy } from "../domain/policy/sender-policy.js";
 import type { AppConfig } from "./config.js";
 import { resolvePiModelId } from "./pi-onboarding.js";
+import { PermissionService } from "../application/services/permission-service.js";
+import { SqlitePermissionRepository } from "../adapters/outbound/sqlite/sqlite-permission-repository.js";
+import { LocalSandboxExecutor } from "../adapters/outbound/sandbox/local-sandbox-executor.js";
+import { principalId, subjectKey } from "../domain/policy/permissions.js";
 
 export interface AppRuntime {
   run(signal: AbortSignal): Promise<void>;
@@ -50,7 +56,26 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const accountId = config.dryRun ? "dry-run-account" : credential?.botId ?? config.ilink.botId;
   const control = new SqliteControlPlane(config.databasePath, { traceRetention: config.traceRetention });
   control.migrate();
-  const channel: ChannelPort = config.dryRun
+  const executor = new LocalSandboxExecutor();
+  const permissionStore = new SqlitePermissionRepository(config.permissionDatabasePath);
+  const databaseFiles = [config.databasePath, config.permissionDatabasePath].flatMap((path) => [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]);
+  const deniedPaths = [...databaseFiles, resolve(config.dataDir, "credentials"), config.piSessionDir,
+    config.inboundMediaDir, config.settingsPath, config.pi.authPath, config.pi.modelsStorePath,
+    resolve(config.workspaceRoot, ".env"), resolve(process.cwd(), ".env"), resolve(config.dataDir, "executor-id")];
+  const protectedWritePaths = ["src", "dist", "scripts", "node_modules", "package.json", "package-lock.json", ".git", "tsconfig.json", "tsconfig.build.json"]
+    .map((path) => resolve(import.meta.dirname, "../..", path));
+  // In dist, ../.. is still the application root. In source dev it is too.
+  let liveGateway: PiAgentGateway | undefined;
+  await mkdir(config.tools.sandboxRoot, { recursive: true, mode: 0o700 });
+  const permissions = new PermissionService(permissionStore, {
+    executorId: resolvePermissionExecutorId(config),
+    workspaceId: realpathSync(config.workspaceRoot),
+    ownerPrincipalId: principalId(accountId, allowedSender),
+    protectedPaths: deniedPaths,
+    workspaceBase: config.tools.sandboxRoot,
+    onChange: (subject) => { executor.revoke(subjectKey(subject)); liveGateway?.abortSubject(subject.principalId); },
+  });
+  const channel: Channel = config.dryRun
     ? new DryRunChannel()
     : new ILinkHttpClient({
         baseUrl: credential?.baseUrl ?? config.ilink.baseUrl,
@@ -67,7 +92,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
     settingsPath: config.settingsPath,
     logger,
   });
-  const agent: AgentPort = config.dryRun
+  const agent: Agent = config.dryRun
     ? new DryRunAgent()
     : await PiAgentGateway.create({
         cwd: config.workspaceRoot,
@@ -80,15 +105,17 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
         systemPromptPath: config.systemPromptPath,
         loadLocalSkills: config.pi.loadLocalSkills,
         toolSandboxRoot: config.tools.sandboxRoot,
-        httpToolEnabled: config.tools.httpEnabled,
-        httpAllowedHosts: config.tools.httpAllowedHosts,
-        shellToolEnabled: config.tools.shellEnabled,
+        permissions, executor, deniedPaths, protectedWritePaths, deniedNetworkPorts: [config.adminPort],
       });
+  if (agent instanceof PiAgentGateway) liveGateway = agent;
+  if (config.tools.shellEnabled || config.tools.httpEnabled || config.tools.httpAllowedHosts.length) {
+    logger.info("Legacy TOOL_SHELL_ENABLED / TOOL_HTTP_* flags are ignored; authenticated user permission grants control all tools");
+  }
 
   const senderPolicy = config.dryRun ? new AllowAllSendersPolicy() : new ExactSenderPolicy(allowedSender);
-  const ingest = new IngestMessage(control, senderPolicy, telemetry);
+  const ingest = new IngestMessage(control, senderPolicy, telemetry, permissions);
   const ownerId = `worker_${randomUUID()}`;
-  const runNextTurn = new RunNextTurn(control, agent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry);
+  const runNextTurn = new RunNextTurn(control, agent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions);
   const deliverReply = new DeliverReply(control, channel, { ownerId, leaseMs: 60_000 }, undefined, telemetry);
   const recover = new RecoverInterruptedWork(control);
   const recovered = recover.execute();
@@ -124,10 +151,22 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
       closed = true;
       await admin.close();
       if (agent instanceof PiAgentGateway) agent.dispose();
+      executor.close();
+      permissionStore.close();
       control.close();
       logger.info("wechat pi agent stopped");
     },
   };
+}
+
+function resolvePermissionExecutorId(config: AppConfig): string {
+  if (config.permissionExecutorId) return config.permissionExecutorId;
+  const path = resolve(config.dataDir, "executor-id");
+  try { writeFileSync(path, randomUUID(), { flag: "wx", mode: 0o600 }); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+  const id = readFileSync(path, "utf8").trim();
+  if (!id) throw new Error("Permission executor ID is empty");
+  return id;
 }
 
 async function resolveCredential(config: AppConfig, logger: Logger): Promise<ILinkCredential | undefined> {

@@ -11,6 +11,7 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   WORKSPACE_ROOT: z.string().default("."),
   DATA_DIR: z.string().default("./data"),
+  PERMISSION_EXECUTOR_ID: z.string().default(""),
   ADMIN_HOST: z.string().default("127.0.0.1"),
   ADMIN_PORT: z.coerce.number().int().min(1).max(65535).default(9464),
   LOG_LEVEL: z.string().default("info"),
@@ -41,6 +42,8 @@ export interface AppConfig {
   workspaceRoot: string;
   dataDir: string;
   databasePath: string;
+  permissionDatabasePath: string;
+  permissionExecutorId: string;
   credentialPath: string;
   settingsPath: string;
   piSessionDir: string;
@@ -88,6 +91,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     workspaceRoot: resolve(value.WORKSPACE_ROOT),
     dataDir,
     databasePath: resolve(dataDir, "app.db"),
+    permissionDatabasePath: resolve(dataDir, "permissions.db"),
+    permissionExecutorId: value.PERMISSION_EXECUTOR_ID,
     credentialPath: resolve(dataDir, "credentials", "ilink.json"),
     settingsPath: resolve(dataDir, "settings.json"),
     piSessionDir: resolve(dataDir, "pi-sessions"),
