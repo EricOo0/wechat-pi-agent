@@ -1,3 +1,12 @@
+import { MarkdownMemoryStore } from "../adapters/outbound/filesystem/markdown-memory-store.js";
+import { SqliteMemoryJobRepository } from "../adapters/outbound/sqlite/sqlite-memory-job-repository.js";
+import { PiMemoryGenerator } from "../adapters/outbound/pi/pi-memory-generator.js";
+import { UserMemoryService } from "../application/services/user-memory-service.js";
+import { EndSession } from "../application/use-cases/end-session.js";
+import { ExpireIdleSessions } from "../application/use-cases/expire-idle-sessions.js";
+import { GenerateSessionMemory } from "../application/use-cases/generate-session-memory.js";
+import { MemoryWorkerLoop } from "../application/use-cases/memory-worker-loop.js";
+import { sleep } from "../shared/sleep.js";
 import { SqliteUserFileRepository } from "../adapters/outbound/sqlite/sqlite-user-file-repository.js";
 import { LocalFileStorage } from "../adapters/outbound/filesystem/local-file-storage.js";
 import { ILinkFileDownloader } from "../adapters/outbound/ilink/ilink-file-downloader.js";
@@ -39,7 +48,7 @@ import { principalId, subjectKey } from "../domain/policy/permissions.js";
 
 export interface AppRuntime {
   run(signal: AbortSignal): Promise<void>;
-  close(): Promise<void>;
+  close(endSessions?: boolean): Promise<void>;
   logger: Logger;
   accountId: string;
 }
@@ -60,6 +69,10 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const accountId = config.dryRun ? "dry-run-account" : credential?.botId ?? config.ilink.botId;
   const control = new SqliteControlPlane(config.databasePath, { traceRetention: config.traceRetention });
   control.migrate();
+  const memoryRoot = resolve(config.dataDir, "memory");
+  const memoryStore = new MarkdownMemoryStore(memoryRoot);
+  const memory = new UserMemoryService(memoryStore);
+  const memoryJobs = new SqliteMemoryJobRepository(config.databasePath);
   const fileRepository = new SqliteUserFileRepository(config.databasePath);
   const fileRoot = resolve(config.dataDir, "files");
   const fileStorage = new LocalFileStorage(fileRoot);
@@ -67,7 +80,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const executor = new LocalSandboxExecutor();
   const permissionStore = new SqlitePermissionRepository(config.permissionDatabasePath);
   const databaseFiles = [config.databasePath, config.permissionDatabasePath].flatMap((path) => [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]);
-  const deniedPaths = [fileRoot, ...databaseFiles, resolve(config.dataDir, "credentials"), config.piSessionDir,
+  const deniedPaths = [memoryRoot, resolve(config.dataDir, ".service.lock"), fileRoot, ...databaseFiles, resolve(config.dataDir, "credentials"), config.piSessionDir,
     config.inboundMediaDir, config.settingsPath, config.pi.authPath, config.pi.modelsStorePath,
     resolve(config.workspaceRoot, ".env"), resolve(process.cwd(), ".env"), resolve(config.dataDir, "executor-id")];
   const protectedWritePaths = ["src", "dist", "scripts", "node_modules", "package.json", "package-lock.json", ".git", "tsconfig.json", "tsconfig.build.json"]
@@ -105,6 +118,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
     : await PiAgentGateway.create({
         logger,
         files: { repository: fileRepository, storage: fileStorage },
+        memory,
         cwd: config.workspaceRoot,
         provider: config.pi.provider,
         modelId: piModelId,
@@ -125,11 +139,16 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const senderPolicy = config.dryRun ? new AllowAllSendersPolicy() : new ExactSenderPolicy(allowedSender);
   const ingest = new IngestMessage(control, senderPolicy, telemetry, permissions);
   const ownerId = `worker_${randomUUID()}`;
-  const runNextTurn = new RunNextTurn(control, agent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles);
+  const endSession = new EndSession(control, permissions, id => liveGateway?.disposeSession(id), error => logger.warn({err:error}, "session permission cleanup deferred"));
+  const expireSessions = new ExpireIdleSessions(control, endSession);
+  const runNextTurn = new RunNextTurn(control, agent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles, endSession);
   const deliverReply = new DeliverReply(control, channel, { ownerId, leaseMs: 60_000 }, undefined, telemetry);
   const recover = new RecoverInterruptedWork(control);
-  const recovered = recover.execute();
-  logger.info({ recovered }, "startup recovery complete");
+  const memoryGenerator = config.dryRun ? {
+    extract: () => Promise.resolve({ content: "Dry-run session: no durable facts extracted.", shouldMerge: false }),
+    merge: (overview: string) => Promise.resolve(overview),
+  } : await PiMemoryGenerator.create({ provider: config.pi.provider, modelId: piModelId, authPath: config.pi.authPath, modelsStorePath: config.pi.modelsStorePath });
+  const memoryLoop = new MemoryWorkerLoop(memoryJobs, new GenerateSessionMemory(memoryJobs, memoryStore, memoryGenerator), logger);
 
   const pollLoop = new PollLoop({ accountId, channel, control, ingest, health, telemetry, logger });
   const turnLoop = new TurnWorkerLoop(runNextTurn, health, logger);
@@ -145,27 +164,53 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
     health,
     telemetry,
     logger,
+    memoryJobs,
   });
   let closed = false;
+  let started = false;
 
   return {
     logger,
     accountId,
     async run(signal: AbortSignal): Promise<void> {
+      if (signal.aborted) return;
       await admin.start();
+      started = true;
+      // main.ts owns the data-directory lock; binding the admin port also precedes recovery.
+      endSession.all("recovery");
+      memoryJobs.recover();
+      logger.info({ recovered: recover.execute() }, "startup recovery complete");
       logger.info({ host: config.adminHost, port: config.adminPort, accountId }, "wechat pi agent started");
-      await Promise.all([pollLoop.run(signal), turnLoop.run(signal), outboxLoop.run(signal)]);
+      const stop = new AbortController(), work = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const shutdown = () => {
+        if (stop.signal.aborted) return;
+        logger.info("stopping intake; waiting up to 30 seconds for active work");
+        stop.abort();
+        if (signal.reason instanceof Error && signal.reason.name === "ServiceLockLost") work.abort();
+        else timer = setTimeout(() => work.abort(), 30_000);
+      };
+      signal.addEventListener("abort", shutdown, {once:true});
+      if (signal.aborted) shutdown();
+      const idleLoop = async () => { while(!stop.signal.aborted) { expireSessions.execute(); await sleep(60_000,stop.signal); } };
+      const tasks = [pollLoop.run(stop.signal), turnLoop.run(stop.signal,work.signal), outboxLoop.run(stop.signal,work.signal), memoryLoop.run(stop.signal,work.signal), idleLoop()];
+      try { await Promise.all(tasks); }
+      finally { shutdown(); await Promise.allSettled(tasks); if(timer)clearTimeout(timer); signal.removeEventListener("abort",shutdown); }
     },
-    async close(): Promise<void> {
+    async close(endSessions = true): Promise<void> {
       if (closed) return;
       closed = true;
-      await admin.close();
-      if (agent instanceof PiAgentGateway) agent.dispose();
-      executor.close();
-      permissionStore.close();
-      fileRepository.close();
-      control.close();
-      logger.info("wechat pi agent stopped");
+      try { if (started && endSessions) endSession.all("shutdown"); }
+      finally {
+        await admin.close();
+        if (agent instanceof PiAgentGateway) agent.dispose();
+        executor.close();
+        memoryJobs.close();
+        permissionStore.close();
+        fileRepository.close();
+        control.close();
+        logger.info("wechat pi agent stopped");
+      }
     },
   };
 }

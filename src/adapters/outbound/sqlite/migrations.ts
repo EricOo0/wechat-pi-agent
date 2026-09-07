@@ -177,4 +177,22 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
         PRIMARY KEY(file_id,scope)
       ) STRICT;`,
   },
+  {
+    version: 7,
+    sql: `ALTER TABLE sessions ADD COLUMN end_reason TEXT;
+      ALTER TABLE sessions ADD COLUMN cleanup_done INTEGER NOT NULL DEFAULT 1;
+      CREATE TABLE memory_jobs (
+        id TEXT PRIMARY KEY, session_id TEXT NOT NULL UNIQUE REFERENCES sessions(id), owner_id TEXT NOT NULL,
+        detail_id TEXT NOT NULL, ended_at TEXT NOT NULL, reason TEXT NOT NULL,
+        phase TEXT NOT NULL DEFAULT 'PENDING', should_merge INTEGER NOT NULL DEFAULT 1,
+        attempts INTEGER NOT NULL DEFAULT 0, worker_id TEXT, lease_until TEXT,
+        next_attempt_at TEXT NOT NULL, error TEXT
+      ) STRICT;
+      CREATE INDEX memory_jobs_claim_idx ON memory_jobs(phase,next_attempt_at,ended_at);
+      CREATE TABLE memory_job_events (
+        job_id TEXT NOT NULL REFERENCES memory_jobs(id), ordinal INTEGER NOT NULL,
+        event_type TEXT NOT NULL, event_at TEXT NOT NULL, event_data_json TEXT,
+        PRIMARY KEY(job_id,ordinal)
+      ) STRICT;`,
+  },
 ];

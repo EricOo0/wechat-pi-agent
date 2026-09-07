@@ -10,10 +10,10 @@ export class TurnWorkerLoop {
     private readonly logger: Logger,
   ) {}
 
-  public async run(signal: AbortSignal): Promise<void> {
+  public async run(signal: AbortSignal, workSignal: AbortSignal = signal): Promise<void> {
     while (!signal.aborted) {
       try {
-        const result = await this.runNextTurn.execute(signal);
+        const result = await this.runNextTurn.execute(workSignal);
         this.health.beat("turn");
         if (result.status === "failed") this.logger.warn({ err: result.error, turnId: result.turnId }, "turn failed");
         if (result.status === "idle") await sleep(250, signal);

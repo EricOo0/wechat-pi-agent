@@ -78,6 +78,16 @@ Trace 会展示无模型调用的文件接收 Turn，以及 `file_save`、`file_
 
 验证：`npm run check` 执行离线回归。可选 `npm run build` 后执行 `node scripts/verify-file-input.mjs --live`，会通过当前 Codex 登录上传一份无敏感内容的合成 PDF，运行两个独立 Session 检查跨会话读取和历史中无签名 URL；这会消耗模型用量，并创建远端测试文件。具体结果见 `docs/designs/pdf-attachments/gateway-verification.json`。真实微信 PDF 收发仍须单独验收。
 
+## 用户记忆与会话结束
+
+记忆位于 `DATA_DIR/memory/<用户标识>/MEMORY.md` 和 `sessions/日期/<sessionId>.md`。`/new`、闲置 1 小时、正常退出和启动恢复都走统一结束入口；归档与记忆任务入队原子完成。后台提炼会话明细、按用户串行更新总览，失败可重试，不阻塞新聊天。
+
+新 Session 固定加载当时的总览，后续后台更新不改变当前快照；恢复和压缩仍使用该版本。Agent 可通过 `memory_search` 字面关键词搜索，再用 `memory_read` 读取明细，不使用 embedding。Admin 页的“记忆任务”可以查看后台模型调用及生成内容。
+
+正常退出会先停接收和领取，等待最多 30 秒后取消未完成工作，归档并入队；未执行的记忆任务下次启动继续。硬崩溃不执行 finally，启动时在数据目录单实例锁保护下归档旧 Session，中断任务不会自动重新执行工具。已生成的回复仍可由 Outbox 恢复发送。
+
+具体目录、限制、重试与恢复语义见 [用户记忆说明](docs/user-memory.md)。
+
 ## 用户权限与系统沙箱
 
 默认每个用户仅能读写个人工作目录、读取已批准的 Skill 目录。Bash 与工具网络默认关闭。模型调用和微信收发属于控制面，不受工具网络开关影响。
@@ -226,5 +236,5 @@ npm run ilink:login
 ## 交付语义
 
 - 入站：inbox 去重与 cursor 推进在同一个 SQLite 事务中。
-- Agent：Pi 调用发生在事务外；崩溃恢复后可能重做推理和工具调用。工具使用每次调用的有效权限，Full Access 允许宿主机操作；不承诺工具调用 exactly-once。单次权限采用尝试前原子消费，失败不会自动恢复额度。
+- Agent：Pi 调用发生在事务外；启动恢复会结束旧会话并取消其未完成 Turn，不自动重做工具调用；已完成的副作用不会回滚。工具使用每次调用的有效权限，Full Access 允许宿主机操作；不承诺工具调用 exactly-once。单次权限采用尝试前原子消费，失败不会自动恢复额度。
 - 出站：outbox 使用稳定 `client_id` 重试；在服务端强幂等未验证前只承诺 at-least-once。

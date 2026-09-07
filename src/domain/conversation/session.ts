@@ -1,3 +1,4 @@
+export type SessionEndReason = "manual" | "idle_timeout" | "shutdown" | "recovery";
 export type SessionStatus = "ACTIVE" | "ARCHIVED" | "CORRUPTED";
 
 export interface ConversationSession {
@@ -10,6 +11,8 @@ export interface ConversationSession {
   status: SessionStatus;
   createdAt: Date;
   updatedAt: Date;
+  endedAt?: Date;
+  endReason?: SessionEndReason;
 }
 
 export function sessionKey(accountId: string, peerId: string): string {

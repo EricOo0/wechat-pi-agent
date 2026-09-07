@@ -1,0 +1,23 @@
+{
+  "testedAt": "2026-09-07T07:06:34.296Z",
+  "synthetic": true,
+  "model": "gpt-5.6-terra",
+  "phase": "COMPLETED",
+  "detailId": "sessions/2026-09-07/ses_b87ae234-90d8-4a68-a6e2-19a428cc72ac.md",
+  "overview": "<!-- consolidated:mem_ses_b87ae234-90d8-4a68-a6e2-19a428cc72ac -->\n# 用户总览\n\n- 项目代号：`MEMORY_VERIFY_d8a8a15061`；后续讨论该项目时应沿用此代号。\n- 语言与风格：使用中文、回答简洁。\n\n## 会话明细索引\n- `sessions/2026-09-07/ses_b87ae234-90d8-4a68-a6e2-19a428cc72ac.md`：项目代号与语言风格偏好。",
+  "revision": "440a079dba58952e0c9ff1dc6359d4cd9468b935946cea55bb32e99a032f4305",
+  "recall": "MEMORY_VERIFY_d8a8a15061",
+  "markerMatched": true,
+  "memoryLoad": [
+    {
+      "type": "memory_load",
+      "at": "2026-09-07T07:06:00.779Z",
+      "data": {
+        "status": "succeeded",
+        "revision": "440a079dba58952e0c9ff1dc6359d4cd9468b935946cea55bb32e99a032f4305",
+        "content": "<!-- consolidated:mem_ses_b87ae234-90d8-4a68-a6e2-19a428cc72ac -->\n# 用户总览\n\n- 项目代号：`MEMORY_VERIFY_d8a8a15061`；后续讨论该项目时应沿用此代号。\n- 语言与风格：使用中文、回答简洁。\n\n## 会话明细索引\n- `sessions/2026-09-07/ses_b87ae234-90d8-4a68-a6e2-19a428cc72ac.md`：项目代号与语言风格偏好。",
+        "restored": false
+      }
+    }
+  ]
+}

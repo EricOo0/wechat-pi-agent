@@ -1,3 +1,6 @@
+import type { UserMemoryService } from "../../../application/services/user-memory-service.js";
+import { createMemoryTools } from "./tools/memory-tools.js";
+import { pinUserMemory } from "./user-memory-context.js";
 import { traceModelCalls } from "./model-call-trace.js";
 import { traceSnapshot } from "./trace-snapshot.js";
 import { syncConversationContext } from "./conversation-context.js";
@@ -27,6 +30,7 @@ import type { SandboxExecutor } from "../../../application/interfaces/sandbox-ex
 
 export interface PiAgentGatewayOptions {
   logger?: Pick<Logger, "info" | "warn">;
+  memory?: UserMemoryService;
   files?: { repository: UserFileRepository; storage: FileStorage };
   cwd: string;
   provider: string;
@@ -197,6 +201,8 @@ export class PiAgentGateway implements Agent {
     }
   }
 
+  public disposeSession(id: string): void { this.sessions.get(id)?.session.dispose(); this.sessions.delete(id); }
+
   public dispose(): void {
     for (const handle of this.sessions.values()) handle.session.dispose();
     this.sessions.clear();
@@ -238,6 +244,7 @@ export class PiAgentGateway implements Agent {
           this.sessions.get(request.session.id)?.request?.onEvent?.({ type: "file_selected", at: new Date(), data: { fileId: id, toolCallId, status: "succeeded" } });
         }));
     }
+    if (this.options.memory) customTools.push(...createMemoryTools(this.options.memory, () => subjectKey(this.sessions.get(request.session.id)?.context.subject ?? initialContext.subject)));
     const activeToolNames = customTools.map((tool) => tool.name);
     const { session } = await createAgentSession({
       cwd: this.options.cwd,
@@ -249,6 +256,7 @@ export class PiAgentGateway implements Agent {
       customTools,
       thinkingLevel: this.options.thinkingLevel ?? "medium",
     });
+    if (this.options.memory) await pinUserMemory(session, manager, subjectKey(initialContext.subject), this.options.memory, event => request.onEvent?.(event));
     const unexpected = session.getActiveToolNames().filter((name) => !activeToolNames.includes(name));
     const unmanaged = customTools.filter((tool) => session.getToolDefinition(tool.name)?.execute !== tool.execute);
     if (unexpected.length > 0 || unmanaged.length > 0) {

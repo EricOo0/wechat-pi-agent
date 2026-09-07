@@ -1,3 +1,4 @@
+import type { EndSessionInput } from "../../../application/interfaces/session-lifecycle-repository.js";
 import type { ConversationContextEvent } from "../../../domain/conversation/context-event.js";
 import type { InboundFileReference } from "../../../domain/files/user-file.js";
 import { DatabaseSync } from "node:sqlite";
@@ -398,6 +399,7 @@ export class SqliteControlPlane implements ControlPlane {
   public recoverInterrupted(now: Date): { turns: number; outbox: number } {
     return this.transaction(() => {
       const timestamp = now.toISOString();
+      this.db.prepare("UPDATE turns SET status='CANCELLED',error_code='SESSION_INTERRUPTED',completed_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE status IN ('QUEUED','RUNNING') AND session_id IN (SELECT id FROM sessions WHERE status<>'ACTIVE')").run(timestamp);
       const turns = this.db.prepare(`
         UPDATE turns SET status = 'QUEUED', started_at = NULL, lease_owner = NULL, lease_expires_at = NULL,
           queued_at = ?, updated_at = ? WHERE status = 'RUNNING' AND lease_expires_at <= ?
@@ -416,6 +418,52 @@ export class SqliteControlPlane implements ControlPlane {
           (SELECT id FROM outbox WHERE status = 'RETRY_WAIT' AND updated_at = ?)
       `).run(timestamp, timestamp);
       return { turns: Number(turns.changes), outbox: Number(outbox.changes) };
+    });
+  }
+
+  public listActiveSessions(): ConversationSession[] {
+    return (this.db.prepare("SELECT * FROM sessions WHERE status='ACTIVE'").all() as SqliteRow[]).map(row => this.toSession(row));
+  }
+  public sessionMessage(sessionId: string): InboundMessage | undefined {
+    const row = this.db.prepare("SELECT i.* FROM inbox i JOIN turns t ON t.inbox_id=i.id WHERE t.session_id=? ORDER BY t.rowid DESC LIMIT 1").get(sessionId) as SqliteRow | undefined;
+    return row ? this.toMessage(row) : undefined;
+  }
+  public pendingSessionCleanup(): string[] {
+    return this.db.prepare("SELECT id FROM sessions WHERE status='ARCHIVED' AND cleanup_done=0").all().map(row => String(row.id));
+  }
+  public markSessionCleaned(id: string): void { this.db.prepare("UPDATE sessions SET cleanup_done=1 WHERE id=? AND status='ARCHIVED'").run(id); }
+  public endSession(input: EndSessionInput): boolean {
+    return this.transaction(() => {
+      const row = this.db.prepare("SELECT * FROM sessions WHERE id=? AND status='ACTIVE'").get(input.sessionId) as SqliteRow | undefined;
+      if (!row) return false;
+      const busy = this.db.prepare("SELECT id FROM turns WHERE session_id=? AND status IN ('QUEUED','RUNNING') AND id<>?").all(input.sessionId, input.currentTurnId ?? "");
+      if (input.reason === "idle_timeout") {
+        if (busy.length) return false;
+        const activity = this.db.prepare(`SELECT max(at) AS at FROM (
+          SELECT i.created_at AS at FROM inbox i JOIN turns t ON t.inbox_id=i.id WHERE t.session_id=?
+          UNION ALL SELECT completed_at AS at FROM turns WHERE session_id=? AND completed_at IS NOT NULL
+        )`).get(input.sessionId,input.sessionId);
+        const last = String(activity?.at ?? row.created_at);
+        if (Date.parse(last) > input.now.getTime() - (input.idleMs ?? 3_600_000)) return false;
+      }
+      if (input.reason === "manual" && this.db.prepare("SELECT 1 FROM turns WHERE session_id=? AND status='RUNNING' AND id<>?").get(input.sessionId,input.currentTurnId??"")) return false;
+      const ended = input.now.toISOString();
+      this.db.prepare("UPDATE sessions SET status='ARCHIVED',archived_at=?,end_reason=?,updated_at=?,cleanup_done=0 WHERE id=?").run(ended,input.reason,ended,input.sessionId);
+      if (input.reason === "manual") {
+        // Messages already queued after /new belong to the new conversation, not the sealed one.
+        this.db.prepare("UPDATE turns SET status='CANCELLED',error_code='SESSION_ENDED',completed_at=? WHERE session_id=? AND status='QUEUED' AND id IN (SELECT continuation_turn_id FROM permission_continuations)").run(ended,input.sessionId);
+        const queued = this.db.prepare("SELECT 1 FROM turns WHERE session_id=? AND status='QUEUED'").get(input.sessionId);
+        if (queued) {
+          const next = this.ensureActiveSession(text(row,"account_id"),text(row,"peer_id"),ended);
+          this.db.prepare("UPDATE turns SET session_id=? WHERE session_id=? AND status='QUEUED'").run(next,input.sessionId);
+        }
+      } else if (input.reason === "shutdown" || input.reason === "recovery") {
+        this.db.prepare("UPDATE turns SET status='CANCELLED',error_code='SESSION_INTERRUPTED',error_message='Session ended before this task completed',completed_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE session_id=? AND status IN ('QUEUED','RUNNING')").run(ended,input.sessionId);
+      }
+      const day = new Intl.DateTimeFormat("en-CA",{year:"numeric",month:"2-digit",day:"2-digit"}).format(input.now);
+      this.db.prepare(`INSERT OR IGNORE INTO memory_jobs(id,session_id,owner_id,detail_id,ended_at,reason,next_attempt_at)
+        VALUES(?,?,?,?,?,?,?)`).run(`mem_${input.sessionId}`,input.sessionId,input.ownerId,`sessions/${day}/${input.sessionId}.md`,ended,input.reason,ended);
+      return true;
     });
   }
 
@@ -631,6 +679,8 @@ export class SqliteControlPlane implements ControlPlane {
       id: text(row, "id"), key: text(row, "session_key"), accountId: text(row, "account_id"),
       peerId: text(row, "peer_id"), status: text(row, "status") as ConversationSession["status"],
       createdAt: date(text(row, "created_at")), updatedAt: date(text(row, "updated_at")),
+      ...(row.archived_at ? { endedAt: date(text(row,"archived_at")) } : {}),
+      ...(row.end_reason ? { endReason: text(row,"end_reason") as NonNullable<ConversationSession["endReason"]> } : {}),
       ...(piSessionId === undefined ? {} : { piSessionId }),
       ...(piSessionFile === undefined ? {} : { piSessionFile }),
     };

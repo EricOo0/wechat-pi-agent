@@ -1,3 +1,5 @@
+import type { MemoryJobRepository } from "../../../application/interfaces/memory-job-repository.js";
+import { memoryJobTrace, memoryJobDetails } from "./memory-trace.js";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import type { Logger } from "pino";
 import type { Agent } from "../../../application/interfaces/agent.js";
@@ -9,6 +11,7 @@ import { buildTraceSpans, type TraceEvent } from "./trace-model.js";
 import { TRACE_PAGE_HTML } from "./trace-page.js";
 
 export interface AdminServerOptions {
+  memoryJobs?: MemoryJobRepository;
   host: string;
   port: number;
   control: ControlPlane;
@@ -87,6 +90,14 @@ export class AdminServer {
       response.writeHead(200, { "Content-Type": this.options.telemetry.registry.contentType });
       response.end(await this.options.telemetry.metrics());
       return;
+    }
+    if (url.pathname === "/debug/memory/jobs") {
+      this.json(response,200,this.options.memoryJobs?.list().map(memoryJobTrace) ?? []); return;
+    }
+    const memoryMatch = /^\/debug\/memory\/jobs\/([^/]+)$/.exec(url.pathname);
+    if (memoryMatch?.[1]) {
+      const result=this.options.memoryJobs?.details(decodeURIComponent(memoryMatch[1]));
+      this.json(response,result?200:404,result?memoryJobDetails(result.job,result.events as TraceEvent[]):{error:"memory_job_not_found"});return;
     }
     if (url.pathname === "/debug/traces") {
       const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") ?? 100), 100));

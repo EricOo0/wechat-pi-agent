@@ -86,6 +86,12 @@ export function buildTraceSpans(events: TraceEvent[], turnStatus: string): Trace
       if (data.status !== "started") { span.end = at; span.output = data; span.status = data.status === "failed" ? "failed" : "succeeded"; }
       continue;
     }
+    if (kind.startsWith("memory_")) {
+      const labels:Record<string,string>={memory_load:"加载用户记忆",memory_detail:"保存会话明细",memory_overview:"更新记忆总览"};
+      const span=make(`memory:${spans.length}`,labels[kind]??kind,"memory",at);
+      span.end=at;span.input=kind==='memory_overview'?{previousRevision:data.previousRevision,previous:data.previous}:data;span.output=typeof data.revision==='string'?{revision:data.revision,content:data.content}:data.content??null;span.events.push(event);
+      span.status=data.status==='failed'?'failed':'succeeded';continue;
+    }
     if (["context_update","context_replay","skill_load","auto_retry_start","auto_retry_end"].includes(kind) || kind.includes("compaction")) {
       const name = kind === "context_update" ? "立即更新会话上下文" : kind === "context_replay" ? "恢复会话上下文" : kind === "skill_load" ? (typeof data.name === "string" ? data.name : typeof data.requestedName === "string" ? data.requestedName : "Skill") : kind;
       const span = make(`event:${spans.length}`,name,kind.startsWith("context_") ? "context" : kind === "skill_load" ? "skill" : "event",at);

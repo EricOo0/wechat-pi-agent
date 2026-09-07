@@ -1,3 +1,4 @@
+import type { EndSession } from "./end-session.js";
 import type { SaveInboundFiles } from "./save-inbound-files.js";
 import { subjectKey } from "../../domain/policy/permissions.js";
 import { FileInputError, fileSummary } from "../../domain/files/user-file.js";
@@ -32,6 +33,7 @@ export class RunNextTurn {
     private readonly commandRouter: CommandRouter = new CommandRouter(),
     private readonly permissions?: PermissionService,
     private readonly saveFiles?: SaveInboundFiles,
+    private readonly endSession?: EndSession,
   ) {
     this.leaseMs = options.leaseMs ?? 60_000;
   }
@@ -65,8 +67,11 @@ export class RunNextTurn {
         ? "已归档当前会话，下一条消息将创建新的上下文。"
         : `状态正常。session=${session.id} turn=${turn.id}`;
       if (routed.type === "new") {
-        if (this.permissions) this.permissions.endSession(this.permissions.context(message, session.id));
-        this.controlPlane.archiveActiveSession(message.accountId, message.peerId);
+        if (this.endSession) this.endSession.execute(session.id,"manual",{currentTurnId:turn.id});
+        else {
+          if (this.permissions) this.permissions.endSession(this.permissions.context(message, session.id));
+          this.controlPlane.archiveActiveSession(message.accountId, message.peerId);
+        }
       }
       const chunks = this.replyChunker.chunk(finalResponse);
       this.controlPlane.completeTurn({ turnId: turn.id, finalResponse, chunks });
