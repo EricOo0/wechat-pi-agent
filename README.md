@@ -1,240 +1,266 @@
-# WeChat Pi Agent MVP
+# WeChat × Pi Agent
 
-本机单用户的微信 iLink × Pi SDK Agent。架构与边界详见 [`wechat-pi-agent-mvp.html`](./wechat-pi-agent-mvp.html)。
+通过微信 iLink 使用的个人 AI 助手。基于 Node.js / TypeScript，使用 Pi SDK 驱动 Agent，支持文字、图片、PDF、用户文件库、用户记忆和受控工具执行。
 
-## 能力
+## 当前能力
 
-- iLink QR 登录、`getupdates` 长轮询、文本与图片入站、文本 `sendmessage` 与 typing。
-- `pi-coding-agent` SDK + `pi-agent-core` + `pi-ai`，运行时不启动 CLI 子进程。
-- SQLite inbox/cursor/session/turn/step/outbox，单 worker FIFO、崩溃恢复和稳定 `client_id`。
-- Pi JSONL 会话续接；用户权限持久化、对话授权、系统沙箱内工具执行和显式宿主机 Full Access。
-- `/healthz`、`/readyz`、`/metrics`、Turn 诊断接口。
-- `DRY_RUN=true` 本地无外部依赖启动模式。
+| 能力 | 实现范围 |
+|---|---|
+| 微信消息 | iLink 扫码登录、长轮询接收、typing、分段文本回复。正式模式按发送者白名单入库与执行。 |
+| 模型与上下文 | `pi-coding-agent` / `pi-agent-core` / `pi-ai` 在进程内运行；持久化 Pi 会话历史、上下文压缩和应用回执。 |
+| Skills | 工程 `skills/`、Pi 项目/用户来源；同名优先级、自然语言按需加载和 `/skill:名称`。 |
+| 图片 | 接收 JPEG、PNG、GIF、WebP，解密保存后作为图片内容交给支持视觉输入的模型。 |
+| PDF 文件库 | 按用户保存原件，跨 Session 查询；通过 Codex 上传和短期链接，将原 PDF 作为模型输入。 |
+| 用户记忆 | 会话结束后后台提炼明细、合并总览；新 Session 加载总览快照，支持关键词搜索和按行读取。 |
+| 权限与沙箱 | 持久化授权、对话确认、授权后去重续跑；普通工具受系统沙箱约束，支持显式 Full Access。 |
+| 可观测性 | Session / Turn / 模型 / 工具 Trace，实际请求与输出、Token、文件/记忆事件，以及健康与指标接口。 |
 
-## System Prompt
+**当前边界**：微信回复仍是文本，不回传图片或文件；原始 PDF 输入只接入官方 Codex 后端；记忆搜索不使用 embedding。Pi 的其他模型通道依赖其认证与模型配置，不代表都已接入文件输入。
 
-微信助手的系统提示词独立维护在：
+## 系统架构
 
-`src/prompts/wechat-assistant.md`
+![当前系统架构](docs/architecture/system-architecture.png)
 
-正式 AgentSession 通过 `DefaultResourceLoader.systemPrompt` 加载该文件。默认 extensions、prompt templates 和项目 context files 始终关闭；Skills 是否加载由 `PI_LOAD_LOCAL_SKILLS` 控制。可通过 `SYSTEM_PROMPT_PATH` 指向其他 Prompt 文件；文件缺失或为空时启动失败。
-
-## 工程 Skills 与加载记录
-
-随工程发布的能力放在 `WORKSPACE_ROOT/skills/<name>/SKILL.md`，例如：
+消息主链：
 
 ```text
-skills/
-└── summarize/
-    ├── SKILL.md
-    ├── references/
-    └── scripts/
+微信 → iLinkHttpClient → IngestMessage → SQLite Inbox / Session / Turn
+     → RunNextTurn → PiAgentGateway → Pi SDK / pi-ai → 模型服务
+     → SQLite Outbox → DeliverReply → 微信文本回复
 ```
 
-`SKILL.md` 使用 YAML 文件头，例如 `name: summarize`、`description: 总结用户提供的长文本`；简介必须非空。目录目前只提供存放约定，没有预装业务 Skill。部署时须连同 `skills/` 一起发布，并将 `WORKSPACE_ROOT` 指向工程根目录；单独复制 `dist/` 不包含 Skills。
+- `PollLoop`、`TurnWorkerLoop`、`OutboxWorkerLoop` 分别处理接收、执行和发送。
+- 生命周期扫描每分钟检查闲置 Session；`EndSession` 统一处理 `/new`、闲置、退出和启动恢复。
+- `MemoryWorkerLoop` 独立领取记忆任务，使用 `PiMemoryGenerator` 提炼与合并，不执行聊天工具。
+- 普通文件/命令/网络工具走 `PermissionService → PolicyCompiler → LocalSandboxExecutor`。
+- 用户文件与记忆通过专用工具访问；图片、文件传输、模型调用和微信收发由控制面处理，不需要开启 Bash 或普通工具网络权限。
 
-`PI_LOAD_LOCAL_SKILLS=true` 开启全部 Skill 来源（默认 false，false 也会关闭工程内置目录）。启动时扫描一次，所有用户共享生效目录；新增、删除或修改名称/简介后重启服务。正文在实际加载时读取，已有 Session 中的旧正文不会自动替换。
+架构图是概览；精确行为以以下说明和代码为准。[制图提示词与范围](docs/architecture/diagram-prompt.md)
 
-复用 Pi 的解析和同名去重，以解析后的 `name` 决定整份 Skill 的生效版本，优先级从高到低：
+## 快速开始
 
-1. 项目 settings 显式配置的本地 Skill 路径。
-2. 工程 `skills/`。
-3. 项目自动发现目录：`.pi/skills/`、`.agents/skills/`（按 Pi 原有顺序及项目信任规则）。
-4. 用户 settings 显式配置的本地路径。
-5. 用户自动发现目录：`~/.pi/agent/skills/`、`~/.agents/skills/`。
-6. Pi 资源包提供的 Skill。
-
-Agent 目录可用 `PI_CODING_AGENT_DIR` 覆盖。工程不会默认扫描 `~/.codex/skills/`。同名只保留高优先级版本，不合并正文；其余来源之间仍按 Pi 原有顺序处理。启动日志 `skill_loaded` 记录生效名称、路径和来源，`skill_shadowed` 记录同名冲突的 winner/loser 路径，其他解析问题记录为 `skill_diagnostic`。
-
-两种调用方式：
-
-- **自然语言**：“帮我总结这份文档”。模型根据系统提示词中的 Skill 目录选择，再用 `read` 按需读取正文。
-- **显式指定**：`/skill:summarize 帮我总结这份文档`。程序校验名称并展开正文，再交给模型。名称不存在或文件不可读时直接回复明确错误，不调用模型猜测。Pi 的 `disable-model-invocation: true` 会隐藏自动选择目录中的该 Skill，但仍允许显式指定。
-
-每轮 Trace 中统一记录 `skill_load`：`mode=explicit/model`、`status=loaded/failed`、名称、路径和来源；模型读取附带 `toolCallId`，失败附带原因。显式加载在正文展开后记录；模型加载在 `read` 完成后记录，仅识别最终生效的 Skill 入口路径（相对路径按个人工作目录解析）。读取参考资料、脚本或使用历史上下文不会新增 Skill 加载事件。它表示加载结果，不代表模型严格遵循或执行完成。显式校验失败会正常回复用户，本轮可完成，但对应加载事件标为失败。
-
-Skill 指引不授予执行权限；受限模式下已加载 Skill 目录可读且受写保护，后续脚本、网络及写入仍受权限系统控制。
-
-## PDF 文件与用户文件库
-
-支持从微信接收 PDF：仅发送文件时回复保存结果；随后可以说“查询我的简历”“分析 resume.pdf”。文件归属于用户，跨 Session 保留；`/new` 不删除文件，也不影响新会话查询自己的文件。多份候选文件应由用户确认选择。
-
-- 原件：`DATA_DIR/files/<subjectKey>/<fileId>/original.pdf`；目录 0700、文件 0600。文件名只用于展示，原件路径由系统生成。
-- 索引：主 SQLite 的 `user_files` 表。`model_file_refs` 保存与 Codex 认证账号隔离的远端文件 ID，签名下载 URL 只作短期内存缓存。
-- 首版限制：单 PDF 最多 20 MiB，每条消息最多保存 3 份，每轮最多选择 3 份，单用户已保存原件最多 500 MiB。超限或失败明确回复；不自动删除旧文件。清理接口尚未提供，存储清理由管理员处理。
-- 首版直接文件分析接入 `openai-codex-responses` 的官方 ChatGPT 后端。其他通道的文字/图片行为保持原样，调用文件工具时会提示文件输入尚未接入，无需用户维护 provider 能力配置。
-
-Agent 工具：`file_list({query?, offset?})` 跨会话查询当前用户文件，`file_use({fileId})` 选择文件。选择后由模型接入层上传/复用原件，在 Pi 的 `onPayload` 中附加 `input_file.file_url`；模型调用、认证接入和流式回复仍由 Pi 完成。系统不本地解析 PDF，不另配 OpenAI API Key，也不修改 Pi 依赖源码。
-
-原件只在需要分析时上传。远端链接有效时复用；链接缓存失效后用远端 ID 获取链接，远端文件不存在时自动重传本地原件。上传/刷新出错保留本地文件；上传超时可能留下远端孤立文件，删除/长期保留策略尚未接入。
-
-纯文件上传保存成功后，立即通过 `Agent.recordContext()` 把上传元信息和应用回执加入当前会话，不触发模型推理。`context_update` 会记录追加内容和更新后的上下文快照。业务数据库是持久事实源；Pi 在首个 Assistant 消息前可能尚未刷出 JSONL，因此重启或压缩后仍会在下一次模型调用前按 Session/Turn 顺序补入缺失的最近 20 条记录（`context_replay`），并按事件 ID 去重。图片继续通过 Pi 的图片消息进入历史。
-
-文件选择仅在当前 Turn 有效，历史只保存 ID 和元信息；同一 Turn 后续模型轮次会重复附加已选文件链接。后续 Turn 或压缩后需要原文时，Agent 再次 `file_use`，不会自动把全部历史附件加入每次请求。当前选中原件的大小/哈希在使用前会重新校验。
-
-下载在 SenderPolicy 过滤和消息落库之后、Turn 执行时进行。文件 CDN 引用只持久化在受保护的 inbox 字段；raw 消息、Admin 文件详情和文件事件不返回密钥/签名 URL。文件库属于控制面保护目录，通用 read/bash 不因新增文件能力而获得访问权限。
-
-Trace 会展示无模型调用的文件接收 Turn，以及 `file_save`、`file_selected`、`file_upload`、`file_input`、`file_error` 的 span。保存、上传、附加和模型完成分别表示不同阶段。现有 Turn 崩溃恢复限制仍适用，不承诺中断任务自动精确续传。
-
-验证：`npm run check` 执行离线回归。可选 `npm run build` 后执行 `node scripts/verify-file-input.mjs --live`，会通过当前 Codex 登录上传一份无敏感内容的合成 PDF，运行两个独立 Session 检查跨会话读取和历史中无签名 URL；这会消耗模型用量，并创建远端测试文件。具体结果见 `docs/designs/pdf-attachments/gateway-verification.json`。真实微信 PDF 收发仍须单独验收。
-
-## 用户记忆与会话结束
-
-记忆位于 `DATA_DIR/memory/<用户标识>/MEMORY.md` 和 `sessions/日期/<sessionId>.md`。`/new`、闲置 1 小时、正常退出和启动恢复都走统一结束入口；归档与记忆任务入队原子完成。后台提炼会话明细、按用户串行更新总览，失败可重试，不阻塞新聊天。
-
-新 Session 固定加载当时的总览，后续后台更新不改变当前快照；恢复和压缩仍使用该版本。Agent 可通过 `memory_search` 字面关键词搜索，再用 `memory_read` 读取明细，不使用 embedding。Admin 页的“记忆任务”可以查看后台模型调用及生成内容。
-
-正常退出会先停接收和领取，等待最多 30 秒后取消未完成工作，归档并入队；未执行的记忆任务下次启动继续。硬崩溃不执行 finally，启动时在数据目录单实例锁保护下归档旧 Session，中断任务不会自动重新执行工具。已生成的回复仍可由 Outbox 恢复发送。
-
-具体目录、限制、重试与恢复语义见 [用户记忆说明](docs/user-memory.md)。
-
-## 用户权限与系统沙箱
-
-默认每个用户仅能读写个人工作目录、读取已批准的 Skill 目录。Bash 与工具网络默认关闭。模型调用和微信收发属于控制面，不受工具网络开关影响。
-
-```env
-PI_LOAD_LOCAL_SKILLS=true
-TOOL_SANDBOX_ROOT=./data/tool-workspace
-# 空值时首次启动生成，之后复用 data/executor-id
-PERMISSION_EXECUTOR_ID=
-```
-
-权限绑定 `channel + bot/accountId + senderId + executorId + workspaceId`；个人目录位于 `TOOL_SANDBOX_ROOT/<subject hash>`。当前入站仍只允许配置的单一微信发送者，该身份是本机所有者。不同 bot/发送者/执行环境/工作区不会自动复用授权。旧 `TOOL_SHELL_ENABLED`、`TOOL_HTTP_ENABLED`、`TOOL_HTTP_ALLOWED_HOSTS` 已不再授予权限，即使旧 `.env` 中为 true，也从基本权限开始。
-
-通过微信直接说：
-
-- “查看权限”或 `/permissions`。
-- “开启全部权限”：生成待确认申请，随后回复系统给出的 `确认授权 <编号>`。
-- “允许你读取 ~/Downloads，以后都可以”：AI 调用 `permissions_request` 生成目录申请；按返回消息确认。
-- “只允许这一次访问 example.com”：AI 可以申请 `once`；也支持 `session` 和 `persistent`。
-- “恢复基本权限”或 `/permissions reset`：撤销所有授权及待确认申请。
-- `/permissions revoke <编号>`：撤销指定授权；`/permissions reject <编号>` 拒绝待确认申请。
-
-还支持完全绕过模型的申请入口：`/permissions request shell`、`/permissions request read /绝对目录`、`/permissions request write /绝对目录`、`/permissions request network example.com`、`/permissions request full-access`。这些入口申请长期权限，仍需确认。网络域名采用精确匹配，子域名需显式 `*.example.com`；`*` 表示允许所有域名。网络授权不等同于 HTTP 方法或内容授权，Bash 中的程序也受同一出口规则约束。受限模式始终禁止连接本服务管理端口；其余已授权域名可能指向私网资源，若要保持公网范围，应只批准可信的公网域名。
-
-申请不会立即开启权限。确认必须来自已鉴别身份的真实入站消息，绑定用户、对话、会话、请求编号与权限版本，10 分钟内有效。重复消息返回原回执，不会重新授权；权限发生变化后，旧待确认申请需重新创建。长期授权跨重启和 `/new` 保留；会话授权在 `/new` 时撤销；单次授权限批准后 10 分钟内的一次匹配工具尝试（失败也消耗），Bash 会消费该次命令可以使用的单次授权。
-
-**授权后自动继续任务**：AI 在任务中提出的权限申请会关联当前 Turn。用户确认成功后，系统发送授权回执，并自动将原任务的续跑加入队列，沿用原会话、任务文本和图片，无需用户再输入“继续”。回执与续跑入队在同一 SQLite 事务中提交，每个申请编号最多创建一条续跑；重复确认不会再次创建。重启后继续处理已保存的队列，执行前重新检查授权和会话状态。授权已撤销、过期、单次权限已消费或原会话已结束时，取消续跑。单独的 `/permissions request ...` 设置命令和升级前未关联任务的旧申请只变更权限，不猜测要继续哪一个任务。
-
-续跑会结合已有会话和工具结果继续工作，不是自动重放失败的 shell 命令。一次入队不等于外部副作用 exactly-once：运行中崩溃仍遵循现有任务恢复语义，模型需核对已完成的操作。
-
-### 执行机制
-
-所有 `read`、`list_files`、`sandbox_write`、`http_get`、`bash` 均通过 `LocalSandboxExecutor`，不再调用 Pi 内置的原生 Bash。受限模式使用固定版本的 `@anthropic-ai/sandbox-runtime`（macOS Seatbelt / Linux bubblewrap），沙箱初始化失败会拒绝执行，不降级为宿主机命令。每次调用独立 supervisor 和网络代理，避免库的全局配置在用户间串用。
-
-策略来自结构化授权记录，经 `PolicyCompiler` 转换成运行库配置，Seatbelt profile 是生成产物，不是另一份可独立修改的授权源。受限模式清理继承环境；授权数据库、凭据、会话与服务代码的写入受到保护。读取系统运行库是工具正常启动的基础能力，不意味着整个磁盘只可见一个文件夹。受限目录授权不能覆盖其他用户工作区或其祖先，须选择更具体的目录；运行库和应用代码不可写，安装或更新宿主机工具需要 Full Access。
-
-**宿主机 Full Access** 明确绕过工具沙箱，拥有当前 OS 用户的文件、网络和命令执行权限，不自动取得 root。此模式可修改服务本身、凭据和授权数据库，因此不能承诺其他用户隔离或防篡改审计；本实现只允许当前配置的机器所有者申请它。撤销会停止受管理的执行进程组和当前模型轮次，后续工具使用新策略，但不会回滚已发生的宿主机改动，也无法约束 Full Access 程序主动脱离进程组后留下的任务。
-
-工具输出和超时有上限：文本读取/写入约 500 KB，Bash 默认 60 秒、最多 120 秒。`http_get` 使用 HTTPS GET，不跟随重定向。沙箱不提供 CPU/内存配额或文件回滚。
-
-### 存储与代码入口
-
-接口集中在 `src/application/interfaces/`，按职责命名：`Agent`、`Channel`、`ControlPlane`、`Telemetry`、`PermissionRepository` 和 `SandboxExecutor`。权限持久化由 `SqlitePermissionRepository` 实现，沙箱执行由 `LocalSandboxExecutor` 实现。
-
-- `data/permissions.db`：授权请求（含已批准 grants）、当前长期策略快照、消息回执、权限变更事件；数据库文件权限 0600。
-- `data/executor-id`：本执行环境的稳定 ID。部署到另一台机器时使用不同 ID，不要原样复用权限数据和执行器身份。
-- `src/application/services/permission-service.ts`：申请、确认、撤销、单次消费与用户身份绑定。
-- `src/application/services/policy-compiler.ts`：个人工作目录和执行策略编译。
-- `src/adapters/outbound/sandbox/`：可信 supervisor 与受限 worker。
-- `src/adapters/outbound/pi/tools/index.ts`：Pi 工具统一入口；模型只具有查看和申请权限工具。
-
-## 图片输入
-
-- 支持 iLink `MessageItemType.IMAGE=2`，优先使用 `image_item.media`，缺失时回退缩略图。
-- 支持 `image_item.aeskey` 和 `media.aes_key` 的 AES-128-ECB 解密格式。
-- CDN 仅允许 HTTPS `*.weixin.qq.com`，单张解密后最大 15MB，每条消息最多处理 4 张。
-- 支持 JPEG、PNG、GIF、WebP；文件以 SHA-256 命名并保存到 `data/inbound-media/`，权限 `0600`。
-- 图片元数据写入 SQLite，Agent 调用时读取为 base64 `ImageContent`，不会把图片 base64 写入 Trace。
-- 当前只支持接收并理解图片，回复仍为文本。
-
-## 环境要求
-
-- Node.js >= 22.19
-- 受限工具执行：macOS 的 `sandbox-exec`；Linux 需安装 bubblewrap、socat、ripgrep。其他平台受限执行失败关闭；真实沙箱测试目前覆盖 macOS。
-- ChatGPT Plus/Pro Codex OAuth（正式模式）
-- 已获得可用的 iLink/ClawBot 账号能力（正式模式）
-
-## 安装与验证
+要求：Node.js **22.19 或更高**。受限工具在 macOS 使用 `sandbox-exec`；Linux 需要 bubblewrap、socat、ripgrep。其他平台若无法建立沙箱，会拒绝受限执行。真实系统沙箱测试目前覆盖 macOS。
 
 ```bash
-npm install
+npm ci
 npm run check
-```
 
-## Dry-run 启动
-
-```bash
-cp .env.example .env
-# .env.example 已默认 DRY_RUN=true
-npm run dev
-
-curl http://127.0.0.1:9464/healthz
-curl http://127.0.0.1:9464/readyz
-curl http://127.0.0.1:9464/metrics
-```
-
-Dry-run 不访问微信或模型，仅用于检查进程、SQLite、worker 和管理接口。
-
-## 正式启动与首次引导
-
-`.env` 中只需先切换运行模式：
-
-```env
-DRY_RUN=false
-```
-
-然后直接启动：
-
-```bash
+# 首次使用时创建配置；已有 .env 不覆盖
+[ -f .env ] || cp .env.example .env
 npm run dev
 ```
 
-首次启动会自动完成缺失项，不需要预先运行 Pi CLI：
+`.env.example` 默认 `DRY_RUN=true`。此模式不访问微信或模型，用于验证进程、SQLite、worker 和管理接口；回复与记忆提炼使用确定性替身，不代表真实模型能力验收。
 
-1. 未检测到 iLink 凭证：显示微信二维码并等待扫码确认。
-2. 未检测到 Codex OAuth：通过 `pi-ai` / `ModelRuntime.login()` 自动打开浏览器登录。
-3. 未绑定模型：读取当前 Provider 的可用模型并在终端显示选择列表。
-4. 完成后继续启动 worker 和管理接口。
+默认管理页：[http://127.0.0.1:9464/admin](http://127.0.0.1:9464/admin)。修改了 `ADMIN_PORT` 时，使用实际端口。
 
-持久化位置：
+### 正式运行
 
-- iLink 凭证：`data/credentials/ilink.json`，权限 `0600`。
-- Pi OAuth：`~/.pi/agent/auth.json`。
-- 模型选择：`data/settings.json`；也可以用 `PI_MODEL_ID` 显式覆盖。
+将 `.env` 中的 `DRY_RUN` 改为 `false`，在终端执行 `npm run dev`。
 
-需要单独重新扫码时仍可执行：
+默认 provider 是 `openai-codex`，需要有效的 Codex 登录。首次交互式启动会处理缺失项：
+
+1. iLink 凭证缺失：显示二维码，等待微信扫码授权。
+2. 模型认证缺失：调用 Pi 的 OAuth 登录流程。
+3. `PI_MODEL_ID` 未配置且未绑定模型：从当前 provider 的模型列表选择并保存。
+4. 启动 worker 和管理接口。
+
+非交互环境须提前准备凭证及模型配置，不能依赖终端询问。其他 provider 应先完成其 Pi 认证配置；此项目未逐个验证所有 provider 的交互登录流程。
+
+需要重新进行微信扫码登录时：
 
 ```bash
 npm run ilink:login
 ```
 
-## Admin Trace 页面与运维接口
+构建后运行：
 
-启动后打开：
+```bash
+npm run build
+npm start
+```
 
-`http://127.0.0.1:<ADMIN_PORT>/admin`（当前本地配置 9465；代码及 `.env.example` 默认 9464）
+部署不能只复制 `dist/`：还需要运行依赖、配置，以及启用时的工程 `skills/`。默认 `SYSTEM_PROMPT_PATH` 指向 `src/prompts/wechat-assistant.md`；若仅部署构建产物，请显式改为构建中复制的 `dist/prompts/wechat-assistant.md`。记忆生成提示词也会复制到 `dist/prompts/`。
 
-管理页采用 Session 导航、调用树（Tree / Chat）和详情面板三栏布局，展示最近 100 个 Turn，包含不调用模型的应用回执。支持消息/文件/ID 搜索、日期筛选、模型与工具节点选择，以及实际请求 JSON 和原始事件查看。
+### 主要配置
 
-每个模型轮次独立记录 `model_start`、`model_request`、`model_http_response`（HTTP 回调可用时）、`model_end`，包含协议转换前的 Agent 上下文、文件注入后实际发送的 Provider 请求、接口返回的 Assistant 内容（文本、公开 reasoning、工具调用）、Token 用量和错误。调用树用真实 modelCallId 与返回的 toolCallId 关联父子节点，不按工具名称猜测。模型没有返回可见 reasoning 时明确标记；旧 Trace 没有采集的模型内容不会重建。
+完整示例见 [.env.example](.env.example)。
 
-工具输入输出不再统一截成 8 KiB。快照保留普通文本，认证字段、签名 URL、图片/文件二进制和不透明推理签名被脱敏或替换为元信息；单字符串上限 100 万字符、单快照文本预算 200 万字符，超限会明确标记 `truncated`。可在模型节点的“运行”页按角色查看实际上下文，在“请求 JSON”页核对发送结构，在工具节点查看参数和结果。
+| 配置 | 默认值 / 用途 |
+|---|---|
+| `WORKSPACE_ROOT` | `.`，工程根目录与工作区身份 |
+| `DATA_DIR` | `./data`，数据库、文件、记忆等运行数据 |
+| `DRY_RUN` | 配置示例为 `true`；代码未提供该变量时默认 `false` |
+| `ADMIN_HOST` / `ADMIN_PORT` | `127.0.0.1` / `9464` |
+| `PI_PROVIDER` | `openai-codex` |
+| `PI_MODEL_ID` | 空时使用已绑定模型或首次交互选择 |
+| `PI_THINKING_LEVEL` | `medium` |
+| `PI_AUTH_PATH` | `~/.pi/agent/auth.json` |
+| `PI_MODELS_STORE_PATH` | `~/.pi/agent/models.json` |
+| `PI_LOAD_LOCAL_SKILLS` | `false`；开启后加载工程及 Pi 的 Skill 来源 |
+| `SYSTEM_PROMPT_PATH` | `./src/prompts/wechat-assistant.md`，文件缺失或为空时启动失败 |
+| `TOOL_SANDBOX_ROOT` | 未显式配置时为 `DATA_DIR/tool-workspace` |
+| `ILINK_ALLOWED_SENDER_ID` | 限定发送者；未设置时回退配置用户 ID 或扫码返回的用户 ID |
+| `PERMISSION_EXECUTOR_ID` | 空时生成并保存到 `DATA_DIR/executor-id` |
+| `TRACE_RETENTION` | `100`，控制 `agent_traces` 系统提示词快照保留数量 |
 
-应用直接处理的文件上传有独立 `context_update` 节点，可以查看上传结束时已加入的上下文，并与后续模型输入核对。模型输出在该次模型调用完成时保存；流式进行中的调用显示运行中，不将缺失输出当作空回复。
+旧的 `TOOL_SHELL_ENABLED`、`TOOL_HTTP_ENABLED`、`TOOL_HTTP_ALLOWED_HOSTS` 不再授予权限；授权以权限服务为准。
 
-系统 Prompt 快照存在 SQLite `agent_traces` 表，`TRACE_RETENTION=100` 控制这类快照的保留数量。模型/工具/上下文事件存储在 `steps`，当前没有按此开关自动清理事件正文。页面只监听配置的 Admin 地址，默认 localhost。
+## 会话生命周期与退出
 
-- `GET /healthz`
-- `GET /readyz`
-- `GET /metrics`
-- `GET /debug/traces?limit=100`
-- `GET /debug/traces/:turnId`
-- `GET /debug/turns/:turnId`
-- `GET /debug/recent-errors?limit=20`
+- `/new`：归档旧 Session，后续已排队的普通消息移入新 Session，旧授权续跑取消。
+- **闲置 1 小时**：每分钟扫描；没有 `QUEUED` / `RUNNING` Turn，且最后一次消息入库或 Turn 完成已超过 1 小时，才在事务内归档。
+- **正常退出**：收到 SIGINT / SIGTERM 后停止接收与任务领取，给予当前任务最多 30 秒收尾时间；之后发出取消，待取消收尾后归档 Session、持久化记忆任务并关闭资源。退出时不启动新的记忆总结请求。
+- **启动恢复**：取得数据目录单实例锁并绑定管理端口后，归档遗留的活动 Session，将未完成 Turn 标为中断取消；不自动重做它们的工具操作。已生成的 Outbox 回复继续走发送恢复。
 
-## 交付语义
+归档与记忆任务入队在 `app.db` 的同一个事务里完成。权限存储位于独立数据库，会话授权撤销采用幂等补偿。
 
-- 入站：inbox 去重与 cursor 推进在同一个 SQLite 事务中。
-- Agent：Pi 调用发生在事务外；启动恢复会结束旧会话并取消其未完成 Turn，不自动重做工具调用；已完成的副作用不会回滚。工具使用每次调用的有效权限，Full Access 允许宿主机操作；不承诺工具调用 exactly-once。单次权限采用尝试前原子消费，失败不会自动恢复额度。
-- 出站：outbox 使用稳定 `client_id` 重试；在服务端强幂等未验证前只承诺 at-least-once。
+服务使用数据目录锁，正常退出会释放；硬崩溃不能执行 `finally`，再次启动可能需要等待旧锁过期（当前 30 秒）。更新版本时先停止旧服务，再启动新版。数据库迁移与旧版就绪检查不一定兼容，不应直接用旧二进制读取已升级的数据目录。
+
+**交付语义**：消息入库与 cursor 推进在同一事务中；Outbox 使用稳定 `client_id` 重试，但不承诺服务端已验证的 exactly-once。任务取消不会回滚已经发生的外部副作用。
+
+## 上下文与 Skills
+
+系统提示词位于 [wechat-assistant.md](src/prompts/wechat-assistant.md)。Pi 扩展、prompt templates、themes 和自动项目上下文文件加载关闭；用户记忆通过独立的用户上下文入口加入。
+
+工程 Skill 放在：
+
+```text
+skills/<name>/SKILL.md
+```
+
+`SKILL.md` 需要非空 `description`，建议明确填写 `name`。当前工程提供目录约定，未预装业务 Skill。[目录说明](skills/README.md)
+
+同名 Skill 按解析后的 `name` 选择整份版本，不合并正文。优先级从高到低：
+
+1. 项目 settings 显式配置的本地路径。
+2. 工程 `skills/`。
+3. 项目自动发现目录，如 `.pi/skills/`、`.agents/skills/`。
+4. 用户 settings 显式配置的本地路径。
+5. 用户自动发现目录，如 `~/.pi/agent/skills/`、`~/.agents/skills/`。
+6. Pi 资源包提供的 Skill。
+
+其余排序及项目信任规则复用 Pi。工程不默认扫描 `~/.codex/skills/`。`PI_CODING_AGENT_DIR` 可覆盖 Pi Agent 目录。
+
+自然语言调用时，模型从名称/简介/路径目录中选择，再用 `read` 加载正文；`/skill:名称 参数` 则先校验名称并展开正文。两者均记录 `skill_load`，未知名称或文件不可读会明确反馈。目录在启动时加载，新增或修改名称/简介后需重启。
+
+**应用回执也属于对话上下文**：纯 PDF 上传后立即加入上传信息和保存回执，并记录 `context_update`，不调用模型。重启、压缩或同步失败后，缺失记录由 `context_replay` 兜底补入；已在活动上下文中的事件不会重复追加。
+
+## 图片与 PDF 文件
+
+| 输入 | 当前限制与行为 |
+|---|---|
+| 图片 | JPEG / PNG / GIF / WebP；每条最多处理 4 张，每张解密后最多 15 MiB。原图引用缺失时可回退缩略图。 |
+| PDF | 单文件最多 20 MiB，每条最多保存 3 份，每轮最多选择 3 份；单用户原件额度 500 MiB。 |
+
+图片会保存到 `DATA_DIR/inbound-media/`，通过 Pi `ImageContent` 加入消息历史；使用前检查模型是否支持图片。当前图片下载发生在 Channel 规范化阶段，SenderPolicy 在之后过滤消息。PDF 则先保存文件引用，经过发送者过滤、消息落库后才在 Turn 中下载。
+
+PDF 原件按用户保存，跨 Session 可用，`/new` 不删除文件：
+
+```text
+DATA_DIR/files/<subjectKey>/<fileId>/original.pdf
+```
+
+- `file_list(query?, offset?)` 查询当前用户文件，`file_use(fileId)` 选择本轮需要读取的原件。
+- 本地 ID 保存在 `user_files`；Codex 远端 ID 保存在 `model_file_refs`，按认证账号作用域隔离。
+- 签名下载链接及有效期只做内存缓存。链接失效后重新获取；远端文件不存在时从本地原件重传。
+- 模型接入层在 Pi `onPayload` 中附加 `input_file.file_url`，不改 Pi 包，不在系统内解析 PDF，也不另配 OpenAI API Key。
+- 文件选择只对当前 Turn 有效；后续需要核对原文时再次 `file_use`。聊天历史保存文件 ID/元信息，不保存签名链接或 PDF Base64。
+- 不支持格式、通道未接入、上传或模型失败时明确反馈；原件保存成功后不会因分析失败而删除。
+
+原件和元信息有权限与哈希校验。首版没有文件删除/回传工具或远端文件清理流程；上传失败可能留下远端孤立文件。详细流程和实测范围见 [PDF 设计与实现说明](docs/designs/pdf-attachments/design.md)。
+
+## 用户记忆
+
+```text
+DATA_DIR/memory/<subjectKey>/
+├── MEMORY.md
+└── sessions/YYYY-MM-DD/<sessionId>.md
+```
+
+Session 结束后，后台任务先提炼明细，再按需合并总览。Markdown 保存正文，SQLite `memory_jobs` 管理阶段、租约和重试；同一用户按顺序处理，合并期间发现总览被修改时重新尝试，不覆盖新修改。
+
+新 Session 固定加载当时的总览快照，不等待后台整理，也不自动刷新；恢复和压缩继续使用该版本。Agent 可调用 `memory_search` 做字面关键词搜索，再用 `memory_read` 按行读取明细。
+
+总览上限 6000 字符，明细上限 60000 字符；搜索默认最多 20 个命中，最多扫描最新 1000 个明细文件，超限有提示。提炼输入也有明确的轮次和文本预算。首版不提供聊天内直接编辑/删除记忆或自动清理历史明细的工具。
+
+使用现有 Pi 模型认证完成提炼和合并，不调用聊天工具。只提升有证据的事实、明确偏好、决定与未完成事项，不将助手建议或临时权限状态当作长期事实。[完整运行说明](docs/user-memory.md)
+
+## 权限与工具沙箱
+
+默认仅可读写个人工作目录、读取已加载的 Skill 目录。Bash 和普通工具网络默认关闭；`file_*` / `memory_*` 专用工具独立校验用户归属。
+
+常用入口：
+
+- `/permissions` 或“查看权限”。
+- `/permissions request shell`、`/permissions request read /绝对目录`、`/permissions request write /绝对目录`。
+- `/permissions request network example.com`、`/permissions request full-access`，或用自然语言提出申请。
+- 收到申请后由真实用户回复 `确认授权 <编号>`；申请本身不会授予权限。
+- `/permissions revoke <编号>`、`/permissions reject <编号>`、`/permissions reset`。
+
+授权绑定真实用户、执行环境、工作区和需要时的 Session。长期授权跨 Session 保留；会话结束撤销会话级与未使用的一次性授权，并取消旧续跑。一次性授权按一次匹配工具尝试消费，失败也消耗。授权有效性与动态权限以权限服务实时查询为准，不能依赖记忆。
+
+Agent 发起的申请可关联被阻塞的 Turn，确认后原子创建一条去重续跑。执行前重新检查会话及权限。**服务结束旧 Session 后，旧续跑不会跨重启自动继续**；这与仍在活动会话内的授权续跑是不同情况。
+
+`read`、`list_files`、`sandbox_write`、`http_get`、`bash` 通过 `LocalSandboxExecutor` 执行。受限模式使用 Seatbelt / bubblewrap；初始化失败不降级到宿主机执行。HTTP 工具只做 HTTPS GET，不跟随重定向；Bash 默认 60 秒、上限 120 秒。
+
+**Full Access** 显式绕过工具沙箱，使用当前 OS 用户的宿主机权限，不自动获得 root。本项目只允许配置的机器所有者申请它；此模式能访问或修改服务与其他本机数据，因此不能承诺跨用户隔离、防篡改审计或回滚。撤销会取消受管执行，不能回滚已有副作用，也不能约束主动脱离受管进程组的后台程序。沙箱本身不提供 CPU/内存配额。
+
+## Trace 与运维
+
+打开 `/admin`：Session 导航、Tree / Chat、节点详情；“记忆任务”切换后台整理记录。
+
+- 每次模型调用有独立输入、实际 Provider 请求、输出、Token 和错误；工具根据真实调用 ID 关联。
+- 可读 reasoning 摘要或文本会展示；只有不透明推理状态时显示说明，不解密或推测未返回内容。
+- 文件保存、上下文更新、Skill 加载、总览加载和记忆发布均可查看。
+- 认证字段、签名 URL、二进制和不透明签名脱敏；单字符串 100 万字符、单快照文本预算 200 万字符，超限明确标记。
+- 旧记录未采集过的模型输入输出不能补出。
+
+| 接口 | 用途 |
+|---|---|
+| `GET /healthz` | 进程存活 |
+| `GET /readyz` | 数据库、Channel、模型认证与 worker 健康 |
+| `GET /metrics` | Prometheus 指标 |
+| `GET /debug/traces?limit=100` | 最近 Turn 列表 |
+| `GET /debug/traces/:turnId` | Trace、执行详情与调用树 |
+| `GET /debug/turns/:turnId` | Turn 详情 |
+| `GET /debug/recent-errors?limit=20` | 最近错误 |
+| `GET /debug/memory/jobs` | 最近记忆任务 |
+| `GET /debug/memory/jobs/:jobId` | 记忆任务详情与调用树 |
+
+`TRACE_RETENTION` 只控制 `agent_traces` 的系统提示词快照数量，不自动清理 `steps` 或 `memory_job_events` 正文。Admin 默认只监听 localhost，不提供独立登录鉴权；包含私有聊天与记忆数据，不应直接暴露到公网。
+
+## 数据与代码入口
+
+| 路径 | 内容 |
+|---|---|
+| `DATA_DIR/app.db` | Inbox、Session、Turn、Outbox、Trace、文件索引、远端文件 ID、记忆任务 |
+| `DATA_DIR/permissions.db` | 权限策略、申请、回执和审计 |
+| `DATA_DIR/files/`、`inbound-media/` | PDF 原件、图片 |
+| `DATA_DIR/memory/` | 用户记忆正文 |
+| `DATA_DIR/pi-sessions/` | Pi JSONL 历史及会话记忆快照 |
+| `DATA_DIR/credentials/ilink.json` | iLink 凭证 |
+| `DATA_DIR/settings.json`、`executor-id` | 绑定模型、执行环境身份 |
+| `PI_AUTH_PATH` | Pi 模型认证，默认位于用户目录 |
+
+运行数据在 `data/` 下且不进入 Git。迁移到另一执行环境时，不要直接复用执行器身份和权限数据。
+
+- [bootstrap](src/bootstrap/container.ts)：依赖组装、五类循环及关闭流程。
+- [application/use-cases](src/application/use-cases)：消息、执行、发送、会话结束及记忆任务编排。
+- [application/interfaces](src/application/interfaces)：按职责定义的存储、模型、Channel 和执行边界。
+- [pi 适配器](src/adapters/outbound/pi)：会话、工具、上下文、文件协议和模型 Trace。
+- [SQLite](src/adapters/outbound/sqlite) / [文件存储](src/adapters/outbound/filesystem) / [沙箱](src/adapters/outbound/sandbox)：具体实现。
+
+## 验证状态
+
+当前代码已通过 109 个自动化测试、类型检查、Lint 和构建。覆盖消息/文件、权限与真实 macOS 沙箱、上下文、Trace、记忆阶段重试、版本一致性、闲置结束、真实子进程 SIGTERM 和退出后任务恢复。
+
+以下命令会使用当前模型认证并消耗用量；只使用隔离临时目录和合成数据：
+
+```bash
+npm run build
+node scripts/verify-file-input.mjs --live
+node scripts/verify-memory.mjs --live
+```
+
+已完成的真实模型验证：[PDF 上传及跨会话读取](docs/designs/pdf-attachments/gateway-verification.json)、[记忆提炼、合并与新会话回忆](docs/memory-verification.json)。这不等同于所有文件格式、所有 provider、Linux 沙箱或真实微信全链路已验收。
