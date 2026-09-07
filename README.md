@@ -19,6 +19,33 @@
 
 ## 系统架构
 
+### 技术模块与职责
+
+![技术架构与主要数据流](docs/architecture/layered-architecture-v3.svg)
+
+[PNG 预览](docs/architecture/layered-architecture-v3.png)。SVG 为可编辑版本；实线表示主要业务流，虚线表示调用、依赖或查询，跨线拱桥表示不相连。核心能力使用领域模型与规则，应用与能力通过侧边访问线读写基础设施。
+
+应用以单实例 Node.js / TypeScript 服务运行。Bootstrap 是启动与组装入口：加载配置和认证、创建组件并注入依赖、启动管理接口和后台循环、协调退出收尾。它不属于消息接入模块，也不参与逐条消息处理。浏览器打开 `/admin` 即管理页，主要用于旁路查询 Trace 与运行状态。
+
+| 职责模块 | 驱动与用例 | 领域模型与结果 |
+|---|---|---|
+| 消息接入 | `PollLoop → IngestMessage`：发送者校验、去重、会话关联、持久化和入队 | `InboundMessage`；Inbox、cursor、待执行 Turn |
+| 任务执行 | `TurnWorkerLoop → RunNextTurn`：领取任务、处理命令和文件、按需调用 Agent、保存结果 | `Turn / Step`；执行结果与 Outbox |
+| 回复投递 | `OutboxWorkerLoop → DeliverReply`：领取回复、经 Channel 发送、记录结果和重试 | `OutboxMessage`；发送状态与重试时间 |
+| 会话与记忆 | `EndSession`、闲置扫描与记忆 worker：归档、提炼、合并、搜索和读取 | `Session / UserMemory / MemoryJob`；Markdown 正文与任务状态 |
+| 权限与工具 | 授权确认、策略编译、受控执行 | 授权、申请、权限主体与审计 |
+| 用户文件 | 保存、查询、选用和模型附件转换 | `UserFile` 与模型文件引用 |
+
+这是现有代码的职责视图；模块共享持久化适配器。Adapter 是项目实现的边界封装：iLink 使用原生 `fetch`，Admin 使用 `node:http`，存储使用 `node:sqlite` / `node:fs`；`PiAgentGateway` 封装 Pi SDK。
+
+应用调度由 SQLite 持久队列和五个异步循环实现，单个 Turn worker 串行执行，记忆 worker 独立运行。单 Turn 内的模型与工具循环由 `pi-agent-core` 驱动，`pi-coding-agent` 管理会话与资源，`pi-ai` 处理 Provider 协议与模型流。
+
+权限校验位于应用服务层，OS 沙箱位于工具执行适配器：`PermissionService → PolicyCompiler → LocalSandboxExecutor`。工具子进程通过 `@anthropic-ai/sandbox-runtime` 使用 Seatbelt / bubblewrap；微信收发和模型请求在主服务控制面。记忆使用双层 Markdown 正文与 SQLite 后台任务状态，生成和读取是独立路径。
+
+[技术图说明](docs/architecture/layered-architecture-v3.md)
+
+### 消息与能力流程
+
 ![当前系统架构](docs/architecture/system-architecture.png)
 
 消息主链：
