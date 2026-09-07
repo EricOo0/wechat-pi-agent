@@ -24,14 +24,21 @@ function fold(name,node){const d=el('details');d.append(el('summary',name),node)
 function card(name,node){const n=el('section',null,'card');n.append(el('div',name,'card-title'));const b=el('div',null,'card-body');b.append(node);n.append(b);return n;}
 function blocks(content){const box=el('div');if(content==null){box.append(el('div','未采集','muted'));return box;}if(typeof content==='string'){box.append(readableText(content));return box;}if(!Array.isArray(content)){box.append(raw(content));return box;}
  content.forEach(c=>{const part=el('div',null,'block');if(c.type==='thinking'){part.classList.add('reasoning');part.append(el('div','Reasoning · 接口返回','pill'),typeof c.thinking==='string'?el('div',c.thinking||'接口未返回可显示的 reasoning 文本','prose'):raw(c));}
+ else if(c.type==='reasoning'){part.append(reasoningView(c));}
  else if(c.type==='text'||c.type==='input_text'||c.type==='output_text'){part.append(typeof c.text==='string'?readableText(c.text):raw(c.text));}
  else if(c.type==='toolCall'){part.append(el('div','Tool Call · '+c.name,'pill'),raw({id:c.id,arguments:c.arguments}));}
  else if(c.type==='image'||c.type==='input_image'){part.append(el('div','图片 · '+(c.mimeType||'image')+'（二进制未展示）','notice'),fold('图片元信息',raw(c)));}
  else if(c.type==='input_file'){part.append(el('div','文件输入（签名及二进制已脱敏）','notice'),raw(c));}else part.append(raw(c));box.append(part);});return box;
 }
+function reasoningView(item){const box=el('div');let readable=false;
+ for(const [label,parts]of [['Reasoning summary',item.summary],['Reasoning text',item.content]]){if(!Array.isArray(parts))continue;const textParts=parts.filter(part=>typeof part.text==='string'?part.text.trim().length>0:part.text?.truncated);if(!textParts.length)continue;readable=true;const section=el('div',null,'reasoning');section.append(el('div',label,'pill'));textParts.forEach(part=>section.append(typeof part.text==='string'?el('div',part.text,'prose'):raw(part.text)));box.append(section);}
+ if(!readable)box.append(el('div',item.encrypted_content?'推理状态已回传，无可读摘要。':'接口未返回可读推理文本。','notice'));
+ else if(item.encrypted_content)box.append(el('div','另有加密推理状态，已隐藏。','muted'));
+ return box;
+}
 function messages(context){const box=el('div');if(!context){box.append(el('div','此记录未采集上下文','notice'));return box;}if(context.systemPrompt!==undefined)box.append(fold('System Prompt',raw(context.systemPrompt)));
  const list=context.messages||[];if(!Array.isArray(list)){box.append(raw(list));return box;}
- list.forEach((m,i)=>{const role=m.role==='toolResult'?'Tool Result · '+(m.toolName||''):m.role==='custom'?'Application Context':m.role||m.type||'Message';const body=m.type==='reasoning'?el('div','接口回放的推理状态；未公开的加密内容不展示。','notice'):blocks(m.content??m);if(m.toolCallId)body.append(el('div','toolCallId: '+m.toolCallId,'muted'));box.append(card(String(i+1).padStart(2,'0')+' · '+role,body));});
+ list.forEach((m,i)=>{const role=m.role==='toolResult'?'Tool Result · '+(m.toolName||''):m.role==='custom'?'Application Context':m.role||m.type||'Message';const body=m.type==='reasoning'?reasoningView(m):blocks(m.content??m);if(m.toolCallId)body.append(el('div','toolCallId: '+m.toolCallId,'muted'));box.append(card(String(i+1).padStart(2,'0')+' · '+role,body));});
  if(context.tools)box.append(fold('本次可用工具定义',raw(context.tools)));return box;
 }
 function output(v){const box=el('div');if(!v){box.append(el('div','尚无输出或未采集','notice'));return box;}if(Array.isArray(v.content)){box.append(card(v.role==='assistant'?'Assistant':'Tool Output',blocks(v.content)));if(v.role==='assistant'&&!v.content.some(c=>c.type==='thinking'&&c.thinking))box.append(el('div','接口未返回可展示的 reasoning 文本；不推测隐藏思考。','muted'));if(v.errorMessage)box.append(card('Error',el('div',v.errorMessage,'prose error')));if(v.details)box.append(fold('Details',raw(v.details)));return box;}return raw(v);}
