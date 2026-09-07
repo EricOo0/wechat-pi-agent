@@ -67,7 +67,8 @@ describe("Admin trace UI", () => {
     expect(page.status).toBe(200);
     const html = await page.text();
     expect(html).toContain("System Prompt");
-    expect(html).toContain("Skill Loads");
+    expect(html).toContain("请求 JSON");
+    expect(html).toContain("Reasoning · 接口返回");
     const script = /<script>([\s\S]*)<\/script>/u.exec(html)?.[1];
     if (script === undefined) throw new Error("admin page script not found");
     expect(() => new Script(script)).not.toThrow();

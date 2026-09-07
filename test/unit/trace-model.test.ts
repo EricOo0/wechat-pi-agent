@@ -34,3 +34,15 @@ it('pairs file stages and keeps file selection visible', () => {
   expect(spans[0]?.events).toHaveLength(2);
   expect(spans[1]?.status).toBe('succeeded');
 });
+
+it('builds model/tool parentage from actual returned toolCall IDs and retains request and reasoning',()=>{
+ const spans=buildTraceSpans([
+  {event_type:'model_start',ordinal:0,event_at:new Date(0),eventData:{modelCallId:'round-1',model:'gpt-test',context:{messages:[{role:'user',content:'hello'}]}}},
+  {event_type:'model_request',ordinal:1,eventData:{modelCallId:'round-1',attempt:1,request:{input:['actual input']}}},
+  {event_type:'model_end',ordinal:2,event_at:new Date(100),eventData:{modelCallId:'round-1',status:'succeeded',usage:{totalTokens:42},output:{content:[{type:'thinking',thinking:'returned summary'},{type:'toolCall',id:'call-A',name:'read',arguments:{path:'/a'}}]}}},
+  event('start','call-A',3,{args:{path:'/a'}}),event('end','call-A',4,{result:{content:[{type:'text',text:'full result'}]}}),
+  {event_type:'model_start',ordinal:5,eventData:{modelCallId:'round-2',model:'gpt-test',context:{messages:[{role:'toolResult',content:'full result'}]}}},
+ ],'RUNNING');
+ expect(spans).toHaveLength(3);expect(spans[0]).toMatchObject({kind:'model',status:'succeeded',usage:{totalTokens:42},input:{providerRequest:{input:['actual input']}}});
+ expect(spans[1]?.parentId).toBe(spans[0]?.id);expect(spans[2]).toMatchObject({kind:'model',status:'running'});
+});

@@ -497,7 +497,7 @@ export class SqliteControlPlane implements ControlPlane {
       FROM turns t
       LEFT JOIN agent_traces a ON t.id = a.turn_id
       JOIN inbox i ON i.id = t.inbox_id
-      WHERE t.id = ? AND (a.turn_id IS NOT NULL OR i.files_json IS NOT NULL)
+      WHERE t.id = ?
     `).get(turnId) as SqliteRow | undefined;
     if (row === undefined) return undefined;
     return this.toAgentTrace(row);
@@ -512,7 +512,6 @@ export class SqliteControlPlane implements ControlPlane {
       FROM turns t
       LEFT JOIN agent_traces a ON t.id = a.turn_id
       JOIN inbox i ON i.id = t.inbox_id
-      WHERE a.turn_id IS NOT NULL OR i.files_json IS NOT NULL
       ORDER BY coalesce(a.captured_at,t.queued_at) DESC, t.rowid DESC
       LIMIT ?
     `).all(limit) as SqliteRow[];

@@ -1,35 +1,33 @@
 {
-  "testedAt": "2026-09-07T05:25:05.441Z",
+  "testedAt": "2026-09-07T05:43:44.759Z",
   "model": "gpt-5.6-terra",
   "synthetic": true,
   "results": [
     {
+      "stage": "upload",
+      "immediateContext": true,
+      "modelCalls": 0
+    },
+    {
+      "modelCalls": 2,
+      "requestSnapshots": 2,
       "session": "one",
-      "output": "GATEWAY_99e7aca14548",
+      "output": "GATEWAY_132b84a6110d",
       "markerMatched": true,
       "fileEvents": [
         {
-          "type": "context_replay",
-          "data": {
-            "contextEventId": "file_receipt:trn_probe_probe",
-            "kind": "file_receipt",
-            "content": "{\"at\":\"2026-09-07T05:24:46.457Z\",\"userAction\":\"uploaded_files\",\"files\":[{\"fileId\":\"fil_3447f97bafb8cda48c9aa50ce4c979ce\",\"name\":\"gateway-verification.pdf\",\"status\":\"ready\",\"bytes\":595,\"mimeType\":\"application/pdf\"}],\"applicationReply\":\"已保存：gateway-verification.pdf（fil_3447f97bafb8cda48c9aa50ce4c979ce）\\n可以告诉我希望如何分析；换新会话后也能查询这些文件。\"}",
-            "status": "succeeded"
-          }
-        },
-        {
           "type": "file_selected",
           "data": {
-            "fileId": "fil_3447f97bafb8cda48c9aa50ce4c979ce",
-            "toolCallId": "call_wKj8RHLjUG4Kn7VMK3qzP8In|fc_062091e35f5fb922016a9e4aa1a04087d0bd0328a23e9e4efa",
+            "fileId": "fil_fc87c82b5ae0cabcfc43c3c40a43f175",
+            "toolCallId": "call_ZqonQtJUnY4JqQwBbPKqFvX6|fc_00ff5edc41f070a6016a9e4eff770887d0b6a21e82ded494cd",
             "status": "succeeded"
           }
         },
         {
           "type": "file_upload",
           "data": {
-            "eventId": "3746e769-c356-426e-9231-ff1450b43174",
-            "fileId": "fil_3447f97bafb8cda48c9aa50ce4c979ce",
+            "eventId": "79e82ced-bc52-4260-8f04-f386d87bda25",
+            "fileId": "fil_fc87c82b5ae0cabcfc43c3c40a43f175",
             "name": "gateway-verification.pdf",
             "status": "started"
           }
@@ -37,38 +35,40 @@
         {
           "type": "file_upload",
           "data": {
-            "eventId": "3746e769-c356-426e-9231-ff1450b43174",
-            "fileId": "fil_3447f97bafb8cda48c9aa50ce4c979ce",
+            "eventId": "79e82ced-bc52-4260-8f04-f386d87bda25",
+            "fileId": "fil_fc87c82b5ae0cabcfc43c3c40a43f175",
             "name": "gateway-verification.pdf",
             "status": "succeeded",
             "reused": false,
-            "durationMs": 1798
+            "durationMs": 1736
           }
         },
         {
           "type": "file_input",
           "data": {
             "fileIds": [
-              "fil_3447f97bafb8cda48c9aa50ce4c979ce"
+              "fil_fc87c82b5ae0cabcfc43c3c40a43f175"
             ],
             "status": "succeeded",
             "transport": "file_url"
           }
         }
       ],
-      "replayedReceipt": true,
-      "historyHasSignedUrl": false
+      "historyHasSignedUrl": false,
+      "contextReceiptPresent": true
     },
     {
+      "modelCalls": 3,
+      "requestSnapshots": 3,
       "session": "two",
-      "output": "GATEWAY_99e7aca14548",
+      "output": "GATEWAY_132b84a6110d",
       "markerMatched": true,
       "fileEvents": [
         {
           "type": "file_selected",
           "data": {
-            "fileId": "fil_3447f97bafb8cda48c9aa50ce4c979ce",
-            "toolCallId": "call_SiCVhzymdDl09XLSoquIyWcw|fc_0280ef5ffc6012a1016a9e4aac4dec87d0b3877978831e60ec",
+            "fileId": "fil_fc87c82b5ae0cabcfc43c3c40a43f175",
+            "toolCallId": "call_YEYeWLT63Ry5IuWB4fH5WRXX|fc_07ec06fc1783d2a1016a9e4f0ae75487d09c86f3a357b31e33",
             "status": "succeeded"
           }
         },
@@ -76,15 +76,15 @@
           "type": "file_input",
           "data": {
             "fileIds": [
-              "fil_3447f97bafb8cda48c9aa50ce4c979ce"
+              "fil_fc87c82b5ae0cabcfc43c3c40a43f175"
             ],
             "status": "succeeded",
             "transport": "file_url"
           }
         }
       ],
-      "replayedReceipt": false,
-      "historyHasSignedUrl": false
+      "historyHasSignedUrl": false,
+      "contextReceiptPresent": false
     }
   ]
 }

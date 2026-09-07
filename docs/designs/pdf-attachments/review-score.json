@@ -2,12 +2,12 @@
   "status": "implemented_locally_verified",
   "score": null,
   "verification": {
-    "tests": 87,
+    "tests": 92,
     "typecheck": "passed",
     "lint": "passed",
     "build": "passed",
-    "live_codex": "file-only upload then natural-language follow-up passed; cross-session query also passed",
-    "trace_ui": "file-only turn and stage inspector checked"
+    "live_codex": "upload immediately records context with zero model calls; subsequent model request/response snapshots and cross-session file analysis passed",
+    "trace_ui": "Tree/Chat, actual provider input, tool input/output and token metadata inspected in browser using real synthetic-model trace"
   },
   "remaining": [
     "真实微信 PDF 端到端验收",

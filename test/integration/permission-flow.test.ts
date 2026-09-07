@@ -37,7 +37,7 @@ describe("authenticated permission flow", () => {
   const wire = () => {
     permissions = new PermissionService(repo, { executorId: "host", workspaceId: "work", ownerPrincipalId: principalId("account", "owner"), protectedPaths: [], onChange: changed });
     ingest = new IngestMessage(control, new ExactSenderPolicy("owner"), undefined, permissions);
-    runner = new RunNextTurn(control, { runTurn, checkReady: () => Promise.resolve({ ready: true }) }, new DryRunChannel(), new ReplyChunker(), { ownerId: "test" }, undefined, undefined, permissions);
+    runner = new RunNextTurn(control, { recordContext: () => Promise.resolve(), runTurn, checkReady: () => Promise.resolve({ ready: true }) }, new DryRunChannel(), new ReplyChunker(), { ownerId: "test" }, undefined, undefined, permissions);
   };
   beforeEach(() => {
     dir = mkdtempSync("/tmp/pi-permission-flow-"); seq = 0; changed.mockClear(); runTurn.mockClear();

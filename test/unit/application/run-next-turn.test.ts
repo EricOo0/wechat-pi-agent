@@ -27,6 +27,7 @@ describe("RunNextTurn", () => {
       return Promise.resolve({ text: "hello world", piSessionId: "pi-1" });
     });
     const agent: Agent = {
+      recordContext: () => Promise.resolve(),
       checkReady: vi.fn(() => Promise.resolve({ ready: true })),
       runTurn,
     };
@@ -66,6 +67,7 @@ describe("RunNextTurn", () => {
     const failTurn = vi.fn();
     const typing = vi.fn<NonNullable<Channel["setTyping"]>>(() => Promise.resolve());
     const agent: Agent = {
+      recordContext: () => Promise.resolve(),
       checkReady: vi.fn(() => Promise.resolve({ ready: true })),
       runTurn: vi.fn(() => Promise.reject(new Error("provider unavailable"))),
     };
@@ -94,6 +96,7 @@ describe("RunNextTurn", () => {
     const completeTurn = vi.fn();
     const runTurn = vi.fn(() => Promise.reject(new Error("must not run")));
     const agent: Agent = {
+      recordContext: () => Promise.resolve(),
       checkReady: vi.fn(() => Promise.resolve({ ready: true })),
       runTurn,
     };

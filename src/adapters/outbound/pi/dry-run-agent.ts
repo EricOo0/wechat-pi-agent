@@ -1,6 +1,11 @@
-import type { Agent, AgentRunRequest, AgentRunResult } from "../../../application/interfaces/agent.js";
+import type { Agent, AgentContextRequest, AgentRunRequest, AgentRunResult } from "../../../application/interfaces/agent.js";
 
 export class DryRunAgent implements Agent {
+  public recordContext(request: AgentContextRequest): Promise<void> {
+    request.onEvent?.({ type: "context_update", at: new Date(), data: { status: "succeeded", input: request.contextEvents ?? [] } });
+    return Promise.resolve();
+  }
+
   public runTurn(request: AgentRunRequest): Promise<AgentRunResult> {
     request.onEvent?.({ type: "agent_start", at: new Date() });
     const text = `[dry-run] ${request.prompt}`;

@@ -1,4 +1,4 @@
-import type { AgentRunRequest, AgentRunResult } from "../../src/application/interfaces/agent.js";
+import type { AgentContextRequest, AgentRunRequest, AgentRunResult } from "../../src/application/interfaces/agent.js";
 import { createCipheriv } from "node:crypto";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -32,8 +32,9 @@ describe('user PDF library',()=>{
   control.ingestBatch({accountId:'bot',previousCursor:'',nextCursor:'1',messages:[msg]});
   const download=vi.fn(()=>Promise.resolve(Buffer.from('%PDF-1.4\nfixture')));
   const save=new SaveInboundFiles(repo,store,{download});const run=vi.fn<(request: AgentRunRequest) => Promise<AgentRunResult>>(()=>Promise.resolve({text:'model response'}));
-  const worker=new RunNextTurn(control,{runTurn:run,checkReady:()=>Promise.resolve({ready:true})},new DryRunChannel(),new ReplyChunker(),{ownerId:'worker'},undefined,undefined,permissions,save);
-  const result=await worker.execute();expect(result.status).toBe('completed');expect(run).not.toHaveBeenCalled();expect(download).toHaveBeenCalledTimes(1);
+  const recordContext=vi.fn<(request: AgentContextRequest)=>Promise<void>>(()=>Promise.resolve());
+  const worker=new RunNextTurn(control,{recordContext,runTurn:run,checkReady:()=>Promise.resolve({ready:true})},new DryRunChannel(),new ReplyChunker(),{ownerId:'worker'},undefined,undefined,permissions,save);
+  const result=await worker.execute();expect(result.status).toBe('completed');expect(run).not.toHaveBeenCalled();expect(recordContext).toHaveBeenCalledTimes(1);expect(recordContext.mock.calls[0]?.[0].contextEvents?.[0]?.content).toContain("已保存");expect(download).toHaveBeenCalledTimes(1);
   const owner=subjectKey(permissions.context(msg,'old').subject);const [file]=repo.list(owner);expect(file?.status).toBe('ready');expect(await store.read(file!)).toEqual(Buffer.from('%PDF-1.4\nfixture'));
   const recent=control.getRecentAgentTraces(100) as Array<{turnId:string;provider:string}>;expect(recent).toHaveLength(1);expect(recent[0]?.provider).toBe('');
   const details=control.getTurnDetails(recent[0]!.turnId);expect(JSON.stringify(details)).not.toContain('secret-download-ref');expect(JSON.stringify(details)).not.toContain('secret-key');expect(JSON.stringify(details)).toContain('file_save');
@@ -51,7 +52,7 @@ describe('user PDF library',()=>{
   const contextTurn = control.getRecentAgentTraces(100) as Array<{turnId:string}>;
   // The mock Agent does not create an invocation snapshot; query the known deterministic turn ID.
   expect(control.getSessionContextEvents('trn_bot_followup','b'.repeat(64))).toEqual([]);
-  expect(contextTurn).toHaveLength(1);
+  expect(contextTurn).toHaveLength(2);
   control.archiveActiveSession('bot','owner');
   const selected:string[]=[];const tools=createFileTools(repo,()=>subjectKey(permissions.context(msg,'new-session').subject),id=>selected.push(id));
   const listing=await tools[0]!.execute('list',{query:'resume'} as never,undefined,undefined,{} as never);expect(JSON.stringify(listing)).toContain(file!.id);

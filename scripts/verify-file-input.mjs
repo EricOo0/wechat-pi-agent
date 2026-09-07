@@ -33,6 +33,10 @@ try {
  const worker=new RunNextTurn(control,gateway,new DryRunChannel(),new ReplyChunker(),{ownerId:'live-test',leaseMs:180000},undefined,undefined,permissions,saveFiles);
  const receipt=await worker.execute();
  if(receipt.status!=='completed'||!receipt.finalResponse.includes('已保存'))throw Error('Upload receipt failed');
+ const uploadTrace=control.getTurnDetails(receipt.turnId);
+ const immediate=uploadTrace.steps.find(e=>e.event_type==='context_update'&&e.eventData?.status==='succeeded');
+ if(!immediate||uploadTrace.steps.some(e=>e.event_type==='model_start'))throw Error('Upload must update context immediately without inference');
+ results.push({stage:'upload',immediateContext:true,modelCalls:0});
  const savedFile=repo.list(subjectKey(permissions.context(message,'ignored').subject))[0];
  let cursor='upload';
  for (const id of ['one','two']) {
@@ -43,11 +47,15 @@ try {
   if(result.status!=='completed')throw Error('Model turn failed');
   const detail=control.getTurnDetails(result.turnId);
   const history=detail.session.piSessionFile?await readFile(detail.session.piSessionFile,'utf8'):'';
-  const summary={session:id,output:result.finalResponse,markerMatched:result.finalResponse.trim()===marker,
-   fileEvents:detail.steps.filter(e=>e.event_type.startsWith('file_')||e.event_type==='context_replay').map(e=>({type:e.event_type,data:e.eventData})),
-   replayedReceipt:history.includes('application_context')&&history.includes(savedFile.id),historyHasSignedUrl:/file_url|oaiusercontent\.com|sig=/.test(history)};
+  const requests=detail.steps.filter(e=>e.event_type==='model_request');
+  const responses=detail.steps.filter(e=>e.event_type==='model_end');
+  if(requests.length<1||responses.length<1||!JSON.stringify(requests).includes('input_file'))throw Error('Actual model context/output trace missing');
+  const summary={modelCalls:responses.length,requestSnapshots:requests.length,session:id,output:result.finalResponse,markerMatched:result.finalResponse.trim()===marker,
+   fileEvents:detail.steps.filter(e=>e.event_type.startsWith('file_')||e.event_type==='context_replay'||e.event_type==='context_update').map(e=>({type:e.event_type,data:e.eventData})),
+   contextReceiptPresent:history.includes('application_context')&&history.includes(savedFile.id),historyHasSignedUrl:/file_url|oaiusercontent\.com|sig=/.test(history)};
+  if(process.env.FILE_TRACE_PREVIEW_OUTPUT)await writeFile(process.env.FILE_TRACE_PREVIEW_OUTPUT,JSON.stringify({trace:control.getAgentTrace(result.turnId),details:detail}));
   results.push(summary);console.log(JSON.stringify(summary));
-  if(!summary.markerMatched||summary.historyHasSignedUrl||(id==='one'&&!summary.replayedReceipt))throw Error('Gateway verification failed');
+  if(!summary.markerMatched||summary.historyHasSignedUrl||(id==='one'&&!summary.contextReceiptPresent))throw Error('Gateway verification failed');
  }
  await writeFile('docs/designs/pdf-attachments/gateway-verification.json',JSON.stringify({testedAt:new Date().toISOString(),model:settings.piModelId,synthetic:true,results},null,2)+'\n');
 } finally { gateway?.dispose();executor.close();repo.close();control.close();permissionsRepo.close();await rm(root,{recursive:true,force:true}); }

@@ -1,3 +1,5 @@
+import { traceModelCalls } from "./model-call-trace.js";
+import { traceSnapshot } from "./trace-snapshot.js";
 import { syncConversationContext } from "./conversation-context.js";
 import { redactFileErrors } from "./file-input/redact-file-errors.js";
 import type { UserFileRepository } from "../../../application/interfaces/user-file-repository.js";
@@ -12,7 +14,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { AgentSession, AgentSessionEvent, CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
 import { createAgentSession, DefaultResourceLoader, getAgentDir, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
-import type { Agent, AgentRunRequest, AgentRunResult } from "../../../application/interfaces/agent.js";
+import type { Agent, AgentContextRequest, AgentRunRequest, AgentRunResult } from "../../../application/interfaces/agent.js";
 import type { AgentEvent } from "../../../domain/execution/step.js";
 import type { InboundImage } from "../../../domain/messaging/inbound-message.js";
 import type { Logger } from "pino";
@@ -104,6 +106,17 @@ export class PiAgentGateway implements Agent {
     });
     const fileInput = options.files ? new ModelFileInputRouter(new CodexFileInput(options.files.repository, new CodexFileUpload(options.files.repository, options.files.storage, async () => (await runtime.getAuth("openai-codex"))?.auth))) : undefined;
     return new PiAgentGateway(options, runtime, resourceLoader, compiler, fileInput);
+  }
+
+  public async recordContext(request: AgentContextRequest): Promise<void> {
+    if (request.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const handle = await this.getOrCreateSession({ ...request, prompt: "" });
+    request.onSessionReady?.(handle.manager.getSessionId(), handle.manager.getSessionFile());
+    await syncConversationContext(handle.session, request.contextEvents ?? [], () => {});
+    request.onEvent?.({ type: "context_update", at: new Date(), data: { status: "succeeded",
+      input: traceSnapshot(request.contextEvents ?? []),
+      output: traceSnapshot({ systemPrompt: handle.session.systemPrompt, messages: handle.session.agent.state.messages }),
+      note: "Application context updated without invoking a model; SQLite remains the durable source before Pi's first assistant flush." } });
   }
 
   public async runTurn(request: AgentRunRequest): Promise<AgentRunResult> {
@@ -243,10 +256,10 @@ export class PiAgentGateway implements Agent {
       throw new Error(`Pi tool policy violation: unexpected or unmanaged tools (${[...unexpected, ...unmanaged.map((tool) => tool.name)].join(", ")})`);
     }
     const previousStream = session.agent.streamFunction;
-    session.agent.streamFunction = async (...args) => {
+    session.agent.streamFunction = traceModelCalls(async (...args) => {
       const stream = await previousStream(...args);
       return selectedFiles.size ? redactFileErrors(stream) : stream;
-    };
+    }, event => this.sessions.get(request.session.id)?.request?.onEvent?.(event));
     const previousPayload = session.agent.onPayload;
     session.agent.onPayload = async (payload, currentModel) => {
       const base = await previousPayload?.(payload, currentModel) ?? payload;
@@ -297,13 +310,5 @@ export class PiAgentGateway implements Agent {
     return { type: event.type, at: new Date(), ...(Object.keys(data).length === 0 ? {} : { data }) };
   }
 
-  private traceValue(value: unknown): unknown {
-    try {
-      const serialized = JSON.stringify(value);
-      if (serialized.length <= 8_192) return value;
-      return { truncated: true, preview: serialized.slice(0, 8_192), originalCharacters: serialized.length };
-    } catch {
-      return { unserializable: true };
-    }
-  }
+  private traceValue(value: unknown): unknown { return traceSnapshot(value); }
 }

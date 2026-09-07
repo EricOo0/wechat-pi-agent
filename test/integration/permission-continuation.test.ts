@@ -28,7 +28,7 @@ describe("permission task continuation", () => {
   const wire = () => {
     permissions = new PermissionService(repo, { executorId: "host", workspaceId: "work", ownerPrincipalId: principalId("account", "owner"), protectedPaths: [], now: () => now });
     ingest = new IngestMessage(control, new ExactSenderPolicy("owner"), undefined, permissions);
-    runner = new RunNextTurn(control, { runTurn, checkReady: () => Promise.resolve({ ready: true }) }, new DryRunChannel(), new ReplyChunker(), { ownerId: "worker" }, undefined, undefined, permissions);
+    runner = new RunNextTurn(control, { recordContext: () => Promise.resolve(), runTurn, checkReady: () => Promise.resolve({ ready: true }) }, new DryRunChannel(), new ReplyChunker(), { ownerId: "worker" }, undefined, undefined, permissions);
   };
   const blockTask = async (images?: InboundMessage["images"]) => {
     const task = { ...msg("write the requested report"), ...(images ? { images } : {}) };

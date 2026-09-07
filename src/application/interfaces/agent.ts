@@ -28,6 +28,8 @@ export interface AgentRunRequest {
   onEvent?: (event: AgentEvent) => void;
 }
 
+export type AgentContextRequest = Pick<AgentRunRequest, "session" | "permissionContext" | "contextEvents" | "signal" | "onSessionReady" | "onEvent">;
+
 export interface AgentRunResult {
   text: string;
   piSessionId?: string;
@@ -36,6 +38,7 @@ export interface AgentRunResult {
 }
 
 export interface Agent {
+  recordContext(request: AgentContextRequest): Promise<void>;
   runTurn(request: AgentRunRequest): Promise<AgentRunResult>;
   checkReady(): Promise<{ ready: boolean; reason?: string }>;
 }

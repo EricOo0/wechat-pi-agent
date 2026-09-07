@@ -4,9 +4,9 @@ export interface TraceEvent {
   ordinal?: number;
   eventData?: Record<string, unknown>;
 }
-
 export interface TraceSpan {
   id: string;
+  parentId?: string;
   name: string;
   kind: string;
   status: "succeeded" | "failed" | "running" | "incomplete";
@@ -14,52 +14,83 @@ export interface TraceSpan {
   end: number | null;
   input: unknown;
   output: unknown;
+  usage?: unknown;
   events: TraceEvent[];
 }
 
-/** Events are observations, not spans: pair by invocation ID, never by tool name. */
+/** Correlate actual model rounds and tool IDs. Never reconstruct missing historical content. */
 export function buildTraceSpans(events: TraceEvent[], turnStatus: string): TraceSpan[] {
   const spans: TraceSpan[] = [];
   const calls = new Map<string, TraceSpan>();
+  const models = new Map<string, TraceSpan>();
+  const toolOrigins = new Map<string, string>();
   const files = new Map<string, TraceSpan>();
+  let activeModel: string | undefined;
   const active = turnStatus === "RUNNING";
-  for (const event of [...events].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))) {
+  const make = (id: string, name: string, kind: string, at: number | null): TraceSpan => {
+    const span: TraceSpan = { id, name, kind, status: active ? "running" : "incomplete", start: at, end: null, input: null, output: null, events: [] };
+    spans.push(span); return span;
+  };
+  for (const event of [...events].sort((a,b)=>(a.ordinal??0)-(b.ordinal??0))) {
     const kind = event.event_type ?? "unknown";
     const data = event.eventData ?? {};
     const time = event.event_at == null ? NaN : new Date(event.event_at).getTime();
     const at = Number.isFinite(time) ? time : null;
     if (kind === "agent_start" || kind === "agent_end") {
-      for (const span of calls.values()) { if (span.end === null) span.status = "incomplete"; }
+      for (const span of calls.values()) if (span.end === null) span.status = "incomplete";
       calls.clear();
     }
-    if (kind.startsWith("file_")) {
-      const labels: Record<string, string> = { file_save: "保存文件", file_upload: "上传文件", file_selected: "选择文件", file_input: "附加模型输入", file_error: "文件处理失败" };
-      const key = `${kind}:${(typeof data.eventId === "string" ? data.eventId : typeof data.fileId === "string" ? data.fileId : String(event.ordinal))}`;
-      let span = files.get(key);
-      if (!span || data.status === "started") {
-        span = { id: `file:${spans.length}`, name: `${labels[kind] ?? kind}${typeof data.name === "string" ? " · " + data.name : ""}`, kind: "file", status: active ? "running" : "incomplete", start: at, end: null, input: data, output: null, events: [] };
-        spans.push(span); files.set(key, span);
-      }
+    if (kind.startsWith("model_") && typeof data.modelCallId === "string") {
+      const id = data.modelCallId;
+      let span = models.get(id);
+      if (!span) { span = make(`model:${id}`, `模型 · ${(typeof data.model === "string" ? data.model : "未记录模型名")}`, "model", kind === "model_start" ? at : null); models.set(id,span); }
       span.events.push(event);
-      if (data.status !== "started") { span.end = at; span.output = data; span.status = data.status === "failed" ? "failed" : "succeeded"; }
+      if (kind === "model_start") { activeModel = span.id; span.input = { context: data.context }; }
+      if (kind === "model_request") span.input = { ...(span.input as Record<string,unknown> ?? {}), providerRequest: data.request, attempt: data.attempt };
+      if (kind === "model_end") {
+        span.end = at; span.output = data.output; span.usage = data.usage;
+        span.status = data.status === "failed" ? "failed" : data.status === "incomplete" ? "incomplete" : "succeeded";
+        if (activeModel === span.id) activeModel = undefined;
+        const output = data.output as {content?: unknown} | undefined;
+        if (Array.isArray(output?.content)) for (const block of output.content as Array<Record<string,unknown>>) {
+          if (block.type === "toolCall" && typeof block.id === "string") toolOrigins.set(block.id, span.id);
+        }
+      }
       continue;
     }
     if (kind.startsWith("tool_execution_")) {
       const callId = typeof data.toolCallId === "string" ? data.toolCallId : null;
       let span = callId === null ? undefined : calls.get(callId);
-      // Preserve separate attempts if an ID is reused after a completed call.
       if (!span || (kind === "tool_execution_start" && span.end !== null)) {
-        span = { id: `${callId ?? "unmatched"}:${spans.length}`, name: typeof data.toolName === "string" ? data.toolName : "tool", kind: "tool", status: active ? "running" : "incomplete", start: null, end: null, input: null, output: null, events: [] };
-        spans.push(span);
-        if (callId !== null) calls.set(callId, span);
+        span = make(`${callId ?? "unmatched"}:${spans.length}`, typeof data.toolName === "string" ? data.toolName : "tool", "tool", null);
+        const parent = callId ? toolOrigins.get(callId) : undefined;
+        if (parent) span.parentId = parent;
+        if (callId !== null) calls.set(callId,span);
       }
       span.events.push(event);
       if (kind === "tool_execution_start") { span.start = at; span.input = data.args ?? null; }
       if (kind === "tool_execution_end") { span.end = at; span.output = data.result ?? null; span.status = data.isError === true ? "failed" : "succeeded"; }
       continue;
     }
-    if (kind === "context_replay" || kind === "skill_load" || kind === "auto_retry_start" || kind === "auto_retry_end" || kind.includes("compaction")) {
-      spans.push({ id: `event:${spans.length}`, name: kind === "context_replay" ? "补入会话上下文" : kind === "skill_load" ? (typeof data.name === "string" ? data.name : typeof data.requestedName === "string" ? data.requestedName : "Skill") : kind, kind: kind === "skill_load" ? "skill" : "event", status: data.status === "failed" || data.success === false ? "failed" : "succeeded", start: at, end: at, input: data, output: null, events: [event] });
+    if (kind.startsWith("file_")) {
+      const labels: Record<string,string> = { file_save: "保存文件", file_upload: "上传文件", file_selected: "选择文件", file_input: "附加文件输入", file_error: "文件处理失败" };
+      const key = `${kind}:${typeof data.eventId === "string" ? data.eventId : typeof data.fileId === "string" ? data.fileId : String(event.ordinal)}`;
+      let span = files.get(key);
+      if (!span || data.status === "started") {
+        span = make(`file:${spans.length}`, `${labels[kind] ?? kind}${typeof data.name === "string" ? " · "+data.name : ""}`, "file", at);
+        const parent = typeof data.toolCallId === "string" ? calls.get(data.toolCallId)?.id : activeModel;
+        if (parent) span.parentId = parent;
+        span.input = data; files.set(key,span);
+      }
+      span.events.push(event);
+      if (data.status !== "started") { span.end = at; span.output = data; span.status = data.status === "failed" ? "failed" : "succeeded"; }
+      continue;
+    }
+    if (["context_update","context_replay","skill_load","auto_retry_start","auto_retry_end"].includes(kind) || kind.includes("compaction")) {
+      const name = kind === "context_update" ? "立即更新会话上下文" : kind === "context_replay" ? "恢复会话上下文" : kind === "skill_load" ? (typeof data.name === "string" ? data.name : typeof data.requestedName === "string" ? data.requestedName : "Skill") : kind;
+      const span = make(`event:${spans.length}`,name,kind.startsWith("context_") ? "context" : kind === "skill_load" ? "skill" : "event",at);
+      span.end = at; span.input = data.input ?? data; span.output = data.output ?? null; span.events.push(event);
+      span.status = data.status === "failed" || data.success === false ? "failed" : "succeeded";
     }
   }
   return spans;

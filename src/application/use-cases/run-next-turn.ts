@@ -81,6 +81,23 @@ export class RunNextTurn {
       const saved = message.files?.length && this.saveFiles && permissionContext
         ? await this.saveFiles.execute(subjectKey(permissionContext.subject), message, event => this.controlPlane.appendAgentEvent(turn.id, event), signal) : undefined;
       if (saved && !message.text.trim() && !message.images?.length) {
+        const contextEvent = {
+          id: `file_receipt:${turn.id}`, kind: "file_receipt" as const, at: turn.queuedAt.toISOString(),
+          content: JSON.stringify({ at: turn.queuedAt.toISOString(), userAction: "uploaded_files", files: saved.files.map(file => ({
+            fileId: file.id, name: file.name, status: file.status, bytes: file.bytes, mimeType: file.mimeType,
+            ...(file.errorCode ? { errorCode: file.errorCode } : {}),
+          })), applicationReply: saved.receipt }),
+        };
+        try {
+          await this.agent.recordContext({ session, contextEvents: [contextEvent],
+            ...(permissionContext === undefined ? {} : { permissionContext }), signal,
+            onSessionReady: (id, path) => this.controlPlane.updateSessionPiLocator(session.id, id, path),
+            onEvent: event => this.controlPlane.appendAgentEvent(turn.id, event),
+          });
+        } catch (error) {
+          if (signal.aborted) throw error;
+          this.controlPlane.appendAgentEvent(turn.id, { type: "context_update", at: new Date(), data: { status: "failed", input: [contextEvent], error: "Immediate context update failed; the durable receipt will be replayed on the next model turn." } });
+        }
         const chunks = this.replyChunker.chunk(saved.receipt);
         this.controlPlane.completeTurn({ turnId: turn.id, finalResponse: saved.receipt, chunks });
         return { status: "completed", turnId: turn.id, finalResponse: saved.receipt, chunks };
