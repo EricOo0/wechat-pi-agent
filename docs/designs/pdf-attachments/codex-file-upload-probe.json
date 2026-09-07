@@ -1,0 +1,76 @@
+{
+  "testedAt": "2026-09-07T04:34:49.044Z",
+  "steps": [
+    {
+      "stage": "create",
+      "httpStatus": 200,
+      "fileId": "file_00000000e45c8230b0d3baa2f638a60b",
+      "uploadHost": "sdmntprwestus.oaiusercontent.com",
+      "c2paReservation": false
+    },
+    {
+      "stage": "upload",
+      "httpStatus": 201
+    },
+    {
+      "stage": "finalize",
+      "httpStatus": 200,
+      "status": "success",
+      "hasDownloadUrl": true
+    },
+    {
+      "stage": "file_id_query",
+      "httpStatus": 404,
+      "completed": false,
+      "output": "",
+      "markerMatched": false,
+      "errors": [],
+      "error": "{\n  \"error\": {\n    \"message\": \"Files [file_00000000e45c8230b0d3baa2f638a60b] were not found\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": null\n  }\n}"
+    },
+    {
+      "stage": "file_id_retry",
+      "at": "2026-09-07T04:35:32.847Z",
+      "httpStatus": 404,
+      "completed": false,
+      "output": "",
+      "markerMatched": false,
+      "errors": [],
+      "error": "{\n  \"error\": {\n    \"message\": \"Files [file_00000000e45c8230b0d3baa2f638a60b] were not found\",\n    \"type\": \"invalid_request_error\",\n    \"param\": null,\n    \"code\": null\n  }\n}"
+    },
+    {
+      "stage": "uploaded_file_url",
+      "at": "2026-09-07T04:35:35.803Z",
+      "httpStatus": 200,
+      "completed": true,
+      "output": "UPLOADCHECK_fe5de87c3c5d",
+      "markerMatched": true,
+      "errors": []
+    },
+    {
+      "stage": "same_url_independent_request_1",
+      "at": "2026-09-07T04:36:14.479Z",
+      "httpStatus": 200,
+      "completed": true,
+      "output": "UPLOADCHECK_fe5de87c3c5d",
+      "markerMatched": true
+    },
+    {
+      "stage": "same_url_independent_request_2",
+      "at": "2026-09-07T04:36:18.668Z",
+      "httpStatus": 200,
+      "completed": true,
+      "output": "UPLOADCHECK_fe5de87c3c5d",
+      "markerMatched": true
+    }
+  ],
+  "model": "gpt-5.6-terra",
+  "marker": "UPLOADCHECK_fe5de87c3c5d",
+  "filename": "codex-upload-probe-08d530.pdf",
+  "fileId": "file_00000000e45c8230b0d3baa2f638a60b",
+  "downloadLink": {
+    "host": "sdmntprwestus.oaiusercontent.com",
+    "hasQuery": true,
+    "expiresAt": "2026-09-07T04:41:10Z",
+    "note": "Signed URL and signatures are not persisted in this report."
+  }
+}

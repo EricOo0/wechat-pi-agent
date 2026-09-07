@@ -1,10 +1,12 @@
 import { mkdir, readFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { AgentSession, AgentSessionEvent, CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
-import { createAgentSession, DefaultResourceLoader, getAgentDir, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader, getAgentDir, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { Agent, AgentRunRequest, AgentRunResult } from "../../../application/interfaces/agent.js";
 import type { AgentEvent } from "../../../domain/execution/step.js";
 import type { InboundImage } from "../../../domain/messaging/inbound-message.js";
+import type { Logger } from "pino";
+import { loadSkillCatalog, skillIdentity, SkillLoadTracker } from "./skill-catalog.js";
 import { loadSystemPrompt } from "./system-prompt.js";
 import { createAgentTools } from "./tools/index.js";
 import type { PermissionContext, PermissionService } from "../../../application/services/permission-service.js";
@@ -12,6 +14,7 @@ import { PolicyCompiler } from "../../../application/services/policy-compiler.js
 import type { SandboxExecutor } from "../../../application/interfaces/sandbox-executor.js";
 
 export interface PiAgentGatewayOptions {
+  logger?: Pick<Logger, "info" | "warn">;
   cwd: string;
   provider: string;
   modelId: string;
@@ -59,12 +62,19 @@ export class PiAgentGateway implements Agent {
       }),
       loadSystemPrompt(options.systemPromptPath),
     ]);
+    const agentDir = getAgentDir();
+    const settingsManager = SettingsManager.create(options.cwd, agentDir);
+    const catalog = await loadSkillCatalog(options.cwd, agentDir, settingsManager, options.loadLocalSkills);
+    for (const skill of catalog.skills) options.logger?.info(skillIdentity(skill), "skill_loaded");
+    for (const diagnostic of catalog.diagnostics) options.logger?.warn({ ...diagnostic }, diagnostic.type === "collision" ? "skill_shadowed" : "skill_diagnostic");
     const resourceLoader = new DefaultResourceLoader({
       cwd: options.cwd,
-      agentDir: getAgentDir(),
+      agentDir,
+      settingsManager,
+      skillsOverride: () => catalog,
       systemPrompt,
       noExtensions: true,
-      noSkills: !options.loadLocalSkills,
+      noSkills: true, // Catalog already resolves Pi sources and bundled priority.
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
@@ -90,26 +100,32 @@ export class PiAgentGateway implements Agent {
       provider: this.options.provider,
       modelId: this.options.modelId,
       skills: this.resourceLoader.getSkills().skills.map((skill) => ({
-        name: skill.name,
+        ...skillIdentity(skill),
         description: skill.description,
-        filePath: skill.filePath,
       })),
       tools: handle.session.getActiveToolNames(),
       permissionRevision: permission.revision,
       permissionMode: permission.policy.mode,
     });
+    const tracker = new SkillLoadTracker(this.resourceLoader.getSkills().skills, this.compiler.workspace(handle.context.subject), (event) => request.onEvent?.(event));
     const unsubscribe = handle.session.subscribe((event) => {
       request.onEvent?.(this.mapEvent(event));
+      tracker.observe(event);
     });
     const onAbort = () => { void handle.session.abort(); };
     request.signal?.addEventListener("abort", onAbort, { once: true });
     try {
       if (request.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      const expanded = await tracker.expand(request.prompt);
+      if (expanded.error) {
+        const piSessionFile = handle.manager.getSessionFile();
+        return { text: expanded.error, piSessionId: handle.manager.getSessionId(), ...(piSessionFile === undefined ? {} : { piSessionFile }) };
+      }
       const images = await this.loadImages(request.images ?? []);
       if (images.length > 0 && !handle.session.model?.input.includes("image")) {
         throw new Error(`Pi model does not support image input: ${this.options.provider}/${this.options.modelId}`);
       }
-      await handle.session.prompt(request.prompt, images.length === 0 ? undefined : { images });
+      await handle.session.prompt(expanded.prompt, { expandPromptTemplates: false, ...(images.length === 0 ? {} : { images }) });
       if (this.options.permissions.snapshot(handle.context).revision !== permission.revision) throw new Error("Permissions changed; turn cancelled");
       const text = handle.session.getLastAssistantText()?.trim();
       if (!text) throw new Error("Pi completed without assistant text");

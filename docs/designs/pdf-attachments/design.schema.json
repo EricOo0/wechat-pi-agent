@@ -1,0 +1,182 @@
+{
+  "doc_meta": {
+    "title": "用户文件库与模型文件输入设计",
+    "owners": [],
+    "reviewers": [],
+    "related_links": [
+      "https://developers.openai.com/api/docs/guides/file-inputs"
+    ]
+  },
+  "glossary": [
+    {
+      "term": "Attachment",
+      "definition": "绑定用户、消息和 Session 的持久化附件",
+      "source_ref": "proposed"
+    }
+  ],
+  "requirement_summary": {
+    "background": "用户希望微信上传 PDF 简历，保存后交给模型分析并继续追问。现有链路仅接收文字和图片。",
+    "goals": [
+      "接收并保存 PDF",
+      "支持上传后分析和后续引用",
+      "记录下载与解析 Trace"
+    ],
+    "non_goals": [
+      "本地 PDF 解析",
+      "其他厂商适配",
+      "文件回传",
+      "长期记忆"
+    ],
+    "scope": "用户级文件库、跨 Session 查询、Codex 上传和 file_url 经 Pi onPayload 发送",
+    "constraints": [
+      "保持用户身份和沙箱边界",
+      "保留消息去重与游标事务",
+      "不修改运行代码"
+    ],
+    "assumptions": [
+      "首版优先沿用当前模型认证",
+      "文件保存至显式删除或管理员清理",
+      "本文数值为建议配置"
+    ],
+    "open_questions": [
+      "真实微信文件验收",
+      "长期远端文件保留语义"
+    ]
+  },
+  "overall_design": {
+    "architecture_summary": "上传并保存用户文件；模型按需选择后，接入层准备远端引用，Pi onPayload 完成协议转换。",
+    "key_decisions": [],
+    "business_flow": [
+      "识别文件引用",
+      "身份过滤和持久化",
+      "下载保存",
+      "Agent 查询选择",
+      "远端上传或复用",
+      "Pi file_url 输入",
+      "模型回复"
+    ],
+    "architecture_diagrams": [
+      "design.md 中的调用流程"
+    ]
+  },
+  "detailed_design": {
+    "modules": []
+  },
+  "api_contracts": {
+    "interface_changes": [
+      "InboundMessage.files",
+      "UserFileRepository",
+      "FileStorage",
+      "ModelFileInput"
+    ],
+    "data_schema_changes": [
+      "user_files",
+      "model_file_refs"
+    ]
+  },
+  "architecture_metrics": {
+    "security": {
+      "checks": [
+        "身份过滤后下载",
+        "附件归属检查",
+        "解析器固定隔离",
+        "CDN 密钥不进 Trace"
+      ],
+      "risks": [
+        "恶意 PDF",
+        "文档指令注入"
+      ],
+      "mitigations": [
+        "无网络解析",
+        "页数和资源限额",
+        "附件内容作为数据"
+      ]
+    },
+    "reliability": {
+      "boundaries": [
+        "保留当前 Turn 恢复语义",
+        "远端上传不承诺恰好一次"
+      ],
+      "degradation": [
+        "明确返回文件错误，保留本地原件"
+      ]
+    },
+    "compatibility": {
+      "items": [
+        "现有 images 保留",
+        "旧消息没有 files 仍可读",
+        "旧版本不支持增量 schema 就绪检查"
+      ]
+    },
+    "observability": {
+      "metrics": [
+        "attachment_download_total",
+        "document_parse_total",
+        "document_parse_duration_seconds"
+      ],
+      "logs": [
+        "attachment_download",
+        "document_parse",
+        "document_context"
+      ],
+      "alerts": [
+        "解析超时或失败突增"
+      ]
+    }
+  },
+  "quality_plan": {
+    "rollout": {
+      "strategy": "协议样本、隔离解析、端到端依次验收",
+      "feature_flags": [
+        "FILE_INPUT_ENABLED（新增）"
+      ]
+    },
+    "rollback": {
+      "strategy": "关闭功能并保留兼容 schema 的版本；重发无法下载的文件",
+      "trigger_conditions": [
+        "错误归属",
+        "解析器逃逸",
+        "回归影响文字图片"
+      ]
+    },
+    "testing": {
+      "unit": "类型、去重、归属、选择语义",
+      "integration": "模拟 CDN、真实 PDF 隔离和 SQLite",
+      "regression": "文字图片权限 Skill Trace",
+      "qa": "真实微信 PDF 上传并跨轮追问"
+    },
+    "checklist": [
+      "见 checklist.md"
+    ]
+  },
+  "errors_and_copy": [
+    {
+      "code": "ATTACHMENT_DOWNLOAD_FAILED",
+      "copy": "文件下载失败，请重新发送。"
+    },
+    {
+      "code": "DOCUMENT_TOO_LARGE",
+      "copy": "文件超过当前支持范围。"
+    }
+  ],
+  "references": [
+    "design.md 第十节"
+  ],
+  "task_breakdown": {
+    "milestones": [
+      "用户文件收存",
+      "Codex 文件输入",
+      "Agent工具及历史接线",
+      "Trace和验证"
+    ],
+    "owners": [],
+    "dependencies": [
+      "iLink FILE 样本",
+      "PDF 引擎"
+    ],
+    "risks": [
+      "当前 Turn 单 worker 性能",
+      "启动时恢复语义"
+    ]
+  }
+}

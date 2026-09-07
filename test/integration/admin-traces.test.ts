@@ -44,6 +44,10 @@ describe("Admin trace UI", () => {
       skills: [],
       tools: ["read"],
     });
+    control.appendAgentEvent(claimed.turn.id, { type: "skill_load", at: new Date(), data: { mode: "explicit", status: "failed", requestedName: "missing", reason: "not_found" } });
+    control.appendAgentEvent(claimed.turn.id, { type: "skill_load", at: new Date(), data: { mode: "model", status: "loaded", name: "demo", filePath: "/skills/demo/SKILL.md", source: "project-bundled", toolCallId: "read-1" } });
+    control.appendAgentEvent(claimed.turn.id, { type: "tool_execution_start", at: new Date(1000), data: { toolCallId: "call-a", toolName: "read", args: { path: "/notes.md" } } });
+    control.appendAgentEvent(claimed.turn.id, { type: "tool_execution_end", at: new Date(1200), data: { toolCallId: "call-a", toolName: "read", isError: false, result: { content: [{ type: "text", text: "notes" }] } } });
     const server = new AdminServer({
       host: "127.0.0.1",
       port: 0,
@@ -63,14 +67,19 @@ describe("Admin trace UI", () => {
     expect(page.status).toBe(200);
     const html = await page.text();
     expect(html).toContain("System Prompt");
+    expect(html).toContain("Skill Loads");
     const script = /<script>([\s\S]*)<\/script>/u.exec(html)?.[1];
     if (script === undefined) throw new Error("admin page script not found");
     expect(() => new Script(script)).not.toThrow();
 
     const list = await fetch(`http://127.0.0.1:${port}/debug/traces?limit=100`).then(async (response) => response.json()) as Array<{ turnId: string }>;
-    expect(list).toEqual([expect.objectContaining({ turnId: claimed.turn.id })]);
+    expect(list).toEqual([expect.objectContaining({ turnId: claimed.turn.id, sessionId: claimed.session.id, queuedAt: claimed.turn.queuedAt.toISOString() })]);
 
-    const details = await fetch(`http://127.0.0.1:${port}/debug/traces/${claimed.turn.id}`).then(async (response) => response.json()) as { trace: { systemPrompt: string } };
+    const details = await fetch(`http://127.0.0.1:${port}/debug/traces/${claimed.turn.id}`).then(async (response) => response.json()) as { spans: Array<{ name: string; start: number; end: number; events: unknown[] }>; trace: { systemPrompt: string }; details: { steps: Array<{ status: string; eventData: Record<string, unknown> }> } };
+    expect(details.spans).toContainEqual(expect.objectContaining({ name: "read", start: 1000, end: 1200 }));
     expect(details.trace.systemPrompt).toBe("actual system prompt");
+    expect(details.details.steps[0]?.status).toBe("FAILED");
+    expect(details.details.steps[0]?.eventData).toMatchObject({ mode: "explicit", reason: "not_found" });
+    expect(details.details.steps[1]?.eventData).toMatchObject({ mode: "model", status: "loaded", toolCallId: "read-1", source: "project-bundled" });
   });
 });

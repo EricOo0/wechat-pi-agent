@@ -5,6 +5,7 @@ import type { Channel } from "../../../application/interfaces/channel.js";
 import type { ControlPlane } from "../../../application/interfaces/control-plane.js";
 import type { PrometheusTelemetry } from "../../outbound/observability/metrics.js";
 import type { RuntimeHealth } from "./runtime-health.js";
+import { buildTraceSpans, type TraceEvent } from "./trace-model.js";
 import { TRACE_PAGE_HTML } from "./trace-page.js";
 
 export interface AdminServerOptions {
@@ -97,7 +98,7 @@ export class AdminServer {
       const turnId = decodeURIComponent(traceMatch[1]);
       const trace = this.options.control.getAgentTrace(turnId);
       const details = this.options.control.getTurnDetails(turnId);
-      this.json(response, trace === undefined ? 404 : 200, trace === undefined ? { error: "trace_not_found" } : { trace, details });
+      this.json(response, trace === undefined ? 404 : 200, trace === undefined ? { error: "trace_not_found" } : { trace, details, spans: buildTraceSpans((details as { steps?: TraceEvent[] } | undefined)?.steps ?? [], (details as { turn?: { status?: string } } | undefined)?.turn?.status ?? "UNKNOWN") });
       return;
     }
     const turnMatch = /^\/debug\/turns\/([^/]+)$/.exec(url.pathname);

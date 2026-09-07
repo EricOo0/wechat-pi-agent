@@ -1,0 +1,5 @@
+{
+  "status": "implementation_baseline",
+  "score": null,
+  "note": "路线已更新为用户文件库和远端文件输入，早期本地解析评分作废；实现验收见 checklist.md"
+}

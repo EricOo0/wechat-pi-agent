@@ -7,7 +7,7 @@ export interface AgentInvocationTrace {
   systemPrompt: string;
   provider: string;
   modelId: string;
-  skills: readonly { name: string; description: string; filePath: string }[];
+  skills: readonly { name: string; description: string; filePath: string; source?: string; scope?: string; origin?: string }[];
   tools: readonly string[];
   permissionRevision?: number;
   permissionMode?: string;

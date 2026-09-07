@@ -19,6 +19,42 @@
 
 正式 AgentSession 通过 `DefaultResourceLoader.systemPrompt` 加载该文件。默认 extensions、prompt templates 和项目 context files 始终关闭；Skills 是否加载由 `PI_LOAD_LOCAL_SKILLS` 控制。可通过 `SYSTEM_PROMPT_PATH` 指向其他 Prompt 文件；文件缺失或为空时启动失败。
 
+## 工程 Skills 与加载记录
+
+随工程发布的能力放在 `WORKSPACE_ROOT/skills/<name>/SKILL.md`，例如：
+
+```text
+skills/
+└── summarize/
+    ├── SKILL.md
+    ├── references/
+    └── scripts/
+```
+
+`SKILL.md` 使用 YAML 文件头，例如 `name: summarize`、`description: 总结用户提供的长文本`；简介必须非空。目录目前只提供存放约定，没有预装业务 Skill。部署时须连同 `skills/` 一起发布，并将 `WORKSPACE_ROOT` 指向工程根目录；单独复制 `dist/` 不包含 Skills。
+
+`PI_LOAD_LOCAL_SKILLS=true` 开启全部 Skill 来源（默认 false，false 也会关闭工程内置目录）。启动时扫描一次，所有用户共享生效目录；新增、删除或修改名称/简介后重启服务。正文在实际加载时读取，已有 Session 中的旧正文不会自动替换。
+
+复用 Pi 的解析和同名去重，以解析后的 `name` 决定整份 Skill 的生效版本，优先级从高到低：
+
+1. 项目 settings 显式配置的本地 Skill 路径。
+2. 工程 `skills/`。
+3. 项目自动发现目录：`.pi/skills/`、`.agents/skills/`（按 Pi 原有顺序及项目信任规则）。
+4. 用户 settings 显式配置的本地路径。
+5. 用户自动发现目录：`~/.pi/agent/skills/`、`~/.agents/skills/`。
+6. Pi 资源包提供的 Skill。
+
+Agent 目录可用 `PI_CODING_AGENT_DIR` 覆盖。工程不会默认扫描 `~/.codex/skills/`。同名只保留高优先级版本，不合并正文；其余来源之间仍按 Pi 原有顺序处理。启动日志 `skill_loaded` 记录生效名称、路径和来源，`skill_shadowed` 记录同名冲突的 winner/loser 路径，其他解析问题记录为 `skill_diagnostic`。
+
+两种调用方式：
+
+- **自然语言**：“帮我总结这份文档”。模型根据系统提示词中的 Skill 目录选择，再用 `read` 按需读取正文。
+- **显式指定**：`/skill:summarize 帮我总结这份文档`。程序校验名称并展开正文，再交给模型。名称不存在或文件不可读时直接回复明确错误，不调用模型猜测。Pi 的 `disable-model-invocation: true` 会隐藏自动选择目录中的该 Skill，但仍允许显式指定。
+
+每轮 Trace 中统一记录 `skill_load`：`mode=explicit/model`、`status=loaded/failed`、名称、路径和来源；模型读取附带 `toolCallId`，失败附带原因。显式加载在正文展开后记录；模型加载在 `read` 完成后记录，仅识别最终生效的 Skill 入口路径（相对路径按个人工作目录解析）。读取参考资料、脚本或使用历史上下文不会新增 Skill 加载事件。它表示加载结果，不代表模型严格遵循或执行完成。显式校验失败会正常回复用户，本轮可完成，但对应加载事件标为失败。
+
+Skill 指引不授予执行权限；受限模式下已加载 Skill 目录可读且受写保护，后续脚本、网络及写入仍受权限系统控制。
+
 ## 用户权限与系统沙箱
 
 默认每个用户仅能读写个人工作目录、读取已批准的 Skill 目录。Bash 与工具网络默认关闭。模型调用和微信收发属于控制面，不受工具网络开关影响。
@@ -144,9 +180,13 @@ npm run ilink:login
 
 启动后打开：
 
-`http://127.0.0.1:9465/admin`
+`http://127.0.0.1:<ADMIN_PORT>/admin`（当前本地配置 9465；代码及 `.env.example` 默认 9464）
 
-Trace Tab 展示最近 100 个真实 Agent Turn，包括：实际 Pi System Prompt 快照、用户 Prompt、Provider/模型、Skills、启用工具、Agent/Tool 事件和最终回复。完整 Prompt 存在 SQLite `agent_traces` 表中；`TRACE_RETENTION=100` 控制保留数量。页面只监听配置的 Admin 地址，默认是 localhost。
+管理页采用 Session 导航、Turn 时间线和调用详情三栏布局。Session 按最近活跃时间排序，内部 Turn 按入队时间正序；支持消息/ID 搜索、日期筛选、展开/收起和跳到最新。当前列表最多展示最近 100 条保留的 Agent Trace，会话可能不完整。
+
+每轮展示 Input → 执行链路 → Output，以及独立的消息发送状态。工具 start/update/end 按本轮 `toolCallId` 配对，展示耗时瀑布、输入、输出和原始事件；缺失结束事件区分运行中与未完整记录，缺失开始事件不推算耗时。Skill 加载显示在链路和 Skill Loads 中；上下文保留实际 System Prompt、可用 Skills/Tools 与全部原始事件。模型轮次正文没有采集，不构造虚假的模型调用详情；截断字段会提示。
+
+完整系统 Prompt 存在 SQLite `agent_traces` 表中；`TRACE_RETENTION=100` 控制保留数量。页面只监听配置的 Admin 地址，默认是 localhost。
 
 - `GET /healthz`
 - `GET /readyz`

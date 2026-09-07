@@ -95,6 +95,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const agent: Agent = config.dryRun
     ? new DryRunAgent()
     : await PiAgentGateway.create({
+        logger,
         cwd: config.workspaceRoot,
         provider: config.pi.provider,
         modelId: piModelId,

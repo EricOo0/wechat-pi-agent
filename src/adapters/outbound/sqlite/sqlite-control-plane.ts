@@ -196,7 +196,7 @@ export class SqliteControlPlane implements ControlPlane {
       if (exists === undefined) throw new Error(`Turn not found: ${turnId}`);
       const ordinalRow = this.db.prepare("SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal FROM steps WHERE turn_id = ?").get(turnId) as SqliteRow;
       const ordinal = integer(ordinalRow, "ordinal");
-      const failed = event.type.toLowerCase().includes("error") || event.type.toLowerCase().includes("fail");
+      const failed = (event.type === "skill_load" && event.data?.status === "failed") || event.type.toLowerCase().includes("error") || event.type.toLowerCase().includes("fail");
       this.db.prepare(`
         INSERT INTO steps
           (id, turn_id, ordinal, kind, name, status, started_at, ended_at, error_json, event_type, event_at, event_data_json, created_at)
@@ -465,7 +465,7 @@ export class SqliteControlPlane implements ControlPlane {
 
   public getAgentTrace(turnId: string): unknown {
     const row = this.db.prepare(`
-      SELECT a.*, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
+      SELECT a.*, t.session_id, t.queued_at, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
         i.text AS user_prompt
       FROM agent_traces a
       JOIN turns t ON t.id = a.turn_id
@@ -480,7 +480,7 @@ export class SqliteControlPlane implements ControlPlane {
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
     const rows = this.db.prepare(`
       SELECT a.turn_id, a.provider, a.model_id, a.skills_json, a.tools_json, a.captured_at, a.permission_revision, a.permission_mode,
-        t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
+        t.session_id, t.queued_at, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
         i.text AS user_prompt
       FROM agent_traces a
       JOIN turns t ON t.id = a.turn_id
@@ -490,6 +490,8 @@ export class SqliteControlPlane implements ControlPlane {
     `).all(limit) as SqliteRow[];
     return rows.map((row) => ({
       turnId: text(row, "turn_id"),
+      sessionId: text(row, "session_id"),
+      queuedAt: date(text(row, "queued_at")),
       provider: text(row, "provider"),
       modelId: text(row, "model_id"),
       status: text(row, "status"),
@@ -530,6 +532,8 @@ export class SqliteControlPlane implements ControlPlane {
   private toAgentTrace(row: SqliteRow): unknown {
     return {
       turnId: text(row, "turn_id"),
+      sessionId: text(row, "session_id"),
+      queuedAt: date(text(row, "queued_at")),
       provider: text(row, "provider"),
       modelId: text(row, "model_id"),
       systemPrompt: text(row, "system_prompt"),
