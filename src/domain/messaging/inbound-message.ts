@@ -1,3 +1,4 @@
+import type { InboundFileReference } from "../files/user-file.js";
 export interface InboundImage {
   path: string;
   mimeType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
@@ -14,6 +15,7 @@ export interface InboundMessage {
   contextToken?: string;
   text: string;
   images?: readonly InboundImage[];
+  files?: readonly InboundFileReference[];
   receivedAt: Date;
   raw?: unknown;
 }

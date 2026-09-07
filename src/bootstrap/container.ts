@@ -1,3 +1,7 @@
+import { SqliteUserFileRepository } from "../adapters/outbound/sqlite/sqlite-user-file-repository.js";
+import { LocalFileStorage } from "../adapters/outbound/filesystem/local-file-storage.js";
+import { ILinkFileDownloader } from "../adapters/outbound/ilink/ilink-file-downloader.js";
+import { SaveInboundFiles } from "../application/use-cases/save-inbound-files.js";
 import { mkdir } from "node:fs/promises";
 import { realpathSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -56,10 +60,14 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const accountId = config.dryRun ? "dry-run-account" : credential?.botId ?? config.ilink.botId;
   const control = new SqliteControlPlane(config.databasePath, { traceRetention: config.traceRetention });
   control.migrate();
+  const fileRepository = new SqliteUserFileRepository(config.databasePath);
+  const fileRoot = resolve(config.dataDir, "files");
+  const fileStorage = new LocalFileStorage(fileRoot);
+  const saveFiles = new SaveInboundFiles(fileRepository, fileStorage, new ILinkFileDownloader(config.ilink.cdnBaseUrl));
   const executor = new LocalSandboxExecutor();
   const permissionStore = new SqlitePermissionRepository(config.permissionDatabasePath);
   const databaseFiles = [config.databasePath, config.permissionDatabasePath].flatMap((path) => [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]);
-  const deniedPaths = [...databaseFiles, resolve(config.dataDir, "credentials"), config.piSessionDir,
+  const deniedPaths = [fileRoot, ...databaseFiles, resolve(config.dataDir, "credentials"), config.piSessionDir,
     config.inboundMediaDir, config.settingsPath, config.pi.authPath, config.pi.modelsStorePath,
     resolve(config.workspaceRoot, ".env"), resolve(process.cwd(), ".env"), resolve(config.dataDir, "executor-id")];
   const protectedWritePaths = ["src", "dist", "scripts", "node_modules", "package.json", "package-lock.json", ".git", "tsconfig.json", "tsconfig.build.json"]
@@ -96,6 +104,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
     ? new DryRunAgent()
     : await PiAgentGateway.create({
         logger,
+        files: { repository: fileRepository, storage: fileStorage },
         cwd: config.workspaceRoot,
         provider: config.pi.provider,
         modelId: piModelId,
@@ -116,7 +125,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const senderPolicy = config.dryRun ? new AllowAllSendersPolicy() : new ExactSenderPolicy(allowedSender);
   const ingest = new IngestMessage(control, senderPolicy, telemetry, permissions);
   const ownerId = `worker_${randomUUID()}`;
-  const runNextTurn = new RunNextTurn(control, agent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions);
+  const runNextTurn = new RunNextTurn(control, agent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles);
   const deliverReply = new DeliverReply(control, channel, { ownerId, leaseMs: 60_000 }, undefined, telemetry);
   const recover = new RecoverInterruptedWork(control);
   const recovered = recover.execute();
@@ -154,6 +163,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
       if (agent instanceof PiAgentGateway) agent.dispose();
       executor.close();
       permissionStore.close();
+      fileRepository.close();
       control.close();
       logger.info("wechat pi agent stopped");
     },

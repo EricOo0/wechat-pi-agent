@@ -1,3 +1,6 @@
+import type { SaveInboundFiles } from "./save-inbound-files.js";
+import { subjectKey } from "../../domain/policy/permissions.js";
+import { FileInputError, fileSummary } from "../../domain/files/user-file.js";
 import type { Agent } from "../interfaces/agent.js";
 import type { Channel } from "../interfaces/channel.js";
 import type { ControlPlane } from "../interfaces/control-plane.js";
@@ -28,6 +31,7 @@ export class RunNextTurn {
     private readonly telemetry: Telemetry = noopTelemetry,
     private readonly commandRouter: CommandRouter = new CommandRouter(),
     private readonly permissions?: PermissionService,
+    private readonly saveFiles?: SaveInboundFiles,
   ) {
     this.leaseMs = options.leaseMs ?? 60_000;
   }
@@ -73,9 +77,18 @@ export class RunNextTurn {
     await this.setTyping(message.accountId, message.peerId, true, signal);
 
     try {
+      const permissionContext = this.permissions?.context(message, session.id, turn.id);
+      const saved = message.files?.length && this.saveFiles && permissionContext
+        ? await this.saveFiles.execute(subjectKey(permissionContext.subject), message, event => this.controlPlane.appendAgentEvent(turn.id, event), signal) : undefined;
+      if (saved && !message.text.trim() && !message.images?.length) {
+        const chunks = this.replyChunker.chunk(saved.receipt);
+        this.controlPlane.completeTurn({ turnId: turn.id, finalResponse: saved.receipt, chunks });
+        return { status: "completed", turnId: turn.id, finalResponse: saved.receipt, chunks };
+      }
       const result = await this.agent.runTurn({
         session,
-        prompt: routed.text,
+        prompt: routed.text + (saved ? `\n\n文件保存结果：\n${saved.receipt}` : ""),
+        ...(saved === undefined ? {} : { files: saved.files.map(fileSummary) }),
         ...(this.permissions === undefined ? {} : { permissionContext: this.permissions.context(message, session.id, turn.id) }),
         ...(message.images === undefined ? {} : { images: message.images }),
         signal,
@@ -97,6 +110,12 @@ export class RunNextTurn {
       return { status: "completed", turnId: turn.id, finalResponse: result.text, chunks };
     } catch (cause: unknown) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
+      if (error instanceof FileInputError) {
+        this.controlPlane.appendAgentEvent(turn.id, { type: "file_error", at: new Date(), data: { status: "failed", errorCode: error.code, message: error.message } });
+        const chunks = this.replyChunker.chunk(error.message);
+        this.controlPlane.completeTurn({ turnId: turn.id, finalResponse: error.message, chunks });
+        return { status: "completed", turnId: turn.id, finalResponse: error.message, chunks };
+      }
       this.controlPlane.failTurn({
         turnId: turn.id,
         errorCode: this.errorCode(error),

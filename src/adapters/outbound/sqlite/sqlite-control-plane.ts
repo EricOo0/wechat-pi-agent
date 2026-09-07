@@ -1,3 +1,4 @@
+import type { InboundFileReference } from "../../../domain/files/user-file.js";
 import { DatabaseSync } from "node:sqlite";
 import type { PathLike } from "node:fs";
 
@@ -122,8 +123,8 @@ export class SqliteControlPlane implements ControlPlane {
       let inserted = 0;
       const insertInbox = this.db.prepare(`
         INSERT OR IGNORE INTO inbox
-          (id, account_id, channel_message_id, peer_id, sender_id, sequence, context_token, text, received_at, raw_json, images_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, account_id, channel_message_id, peer_id, sender_id, sequence, context_token, text, received_at, raw_json, images_json, files_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const message of batch.messages) {
         if (message.accountId !== batch.accountId) {
@@ -141,6 +142,7 @@ export class SqliteControlPlane implements ControlPlane {
           message.receivedAt.toISOString(),
           serialize(message.raw),
           serialize(message.images),
+          serialize(message.files),
           timestamp,
         );
         if (Number(result.changes) === 0) continue;
@@ -196,7 +198,7 @@ export class SqliteControlPlane implements ControlPlane {
       if (exists === undefined) throw new Error(`Turn not found: ${turnId}`);
       const ordinalRow = this.db.prepare("SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal FROM steps WHERE turn_id = ?").get(turnId) as SqliteRow;
       const ordinal = integer(ordinalRow, "ordinal");
-      const failed = (event.type === "skill_load" && event.data?.status === "failed") || event.type.toLowerCase().includes("error") || event.type.toLowerCase().includes("fail");
+      const failed = (event.data?.status === "failed") || event.type.toLowerCase().includes("error") || event.type.toLowerCase().includes("fail");
       this.db.prepare(`
         INSERT INTO steps
           (id, turn_id, ordinal, kind, name, status, started_at, ended_at, error_json, event_type, event_at, event_data_json, created_at)
@@ -432,7 +434,7 @@ export class SqliteControlPlane implements ControlPlane {
         s.pi_session_id, s.pi_session_file, s.status AS session_status,
         s.created_at AS session_created_at, s.updated_at AS session_updated_at,
         i.account_id AS inbox_account_id, i.channel_message_id, i.peer_id AS inbox_peer_id,
-        i.sender_id, i.sequence, i.context_token, i.text AS inbox_text, i.received_at, i.raw_json, i.images_json
+        i.sender_id, i.sequence, i.context_token, i.text AS inbox_text, i.received_at, i.raw_json, i.images_json, i.files_json
       FROM turns t JOIN sessions s ON s.id = t.session_id JOIN inbox i ON i.id = t.inbox_id
       WHERE t.id = ?
     `).get(turnId) as SqliteRow | undefined;
@@ -450,8 +452,8 @@ export class SqliteControlPlane implements ControlPlane {
         id: row.inbox_id, account_id: row.inbox_account_id, channel_message_id: row.channel_message_id,
         peer_id: row.inbox_peer_id, sender_id: row.sender_id, sequence: row.sequence,
         context_token: row.context_token, text: row.inbox_text, received_at: row.received_at, raw_json: row.raw_json,
-        images_json: row.images_json,
-      }),
+        images_json: row.images_json, files_json: row.files_json,
+      }, true),
       steps: steps.map((step) => ({
         ...step,
         started_at: nullableText(step, "started_at") === undefined ? undefined : date(text(step, "started_at")),
@@ -465,12 +467,12 @@ export class SqliteControlPlane implements ControlPlane {
 
   public getAgentTrace(turnId: string): unknown {
     const row = this.db.prepare(`
-      SELECT a.*, t.session_id, t.queued_at, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
+      SELECT a.*, t.id AS turn_id, coalesce(a.provider,'') AS provider, coalesce(a.model_id,'') AS model_id, coalesce(a.system_prompt,'') AS system_prompt, coalesce(a.skills_json,'[]') AS skills_json, coalesce(a.tools_json,'[]') AS tools_json, coalesce(a.captured_at,t.queued_at) AS captured_at, t.session_id, t.queued_at, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
         i.text AS user_prompt
-      FROM agent_traces a
-      JOIN turns t ON t.id = a.turn_id
+      FROM turns t
+      LEFT JOIN agent_traces a ON t.id = a.turn_id
       JOIN inbox i ON i.id = t.inbox_id
-      WHERE a.turn_id = ?
+      WHERE t.id = ? AND (a.turn_id IS NOT NULL OR i.files_json IS NOT NULL)
     `).get(turnId) as SqliteRow | undefined;
     if (row === undefined) return undefined;
     return this.toAgentTrace(row);
@@ -479,13 +481,14 @@ export class SqliteControlPlane implements ControlPlane {
   public getRecentAgentTraces(limit: number): readonly unknown[] {
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
     const rows = this.db.prepare(`
-      SELECT a.turn_id, a.provider, a.model_id, a.skills_json, a.tools_json, a.captured_at, a.permission_revision, a.permission_mode,
+      SELECT t.id AS turn_id, coalesce(a.provider,'') AS provider, coalesce(a.model_id,'') AS model_id, coalesce(a.skills_json,'[]') AS skills_json, coalesce(a.tools_json,'[]') AS tools_json, coalesce(a.captured_at,t.queued_at) AS captured_at, a.permission_revision, a.permission_mode,
         t.session_id, t.queued_at, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
         i.text AS user_prompt
-      FROM agent_traces a
-      JOIN turns t ON t.id = a.turn_id
+      FROM turns t
+      LEFT JOIN agent_traces a ON t.id = a.turn_id
       JOIN inbox i ON i.id = t.inbox_id
-      ORDER BY a.captured_at DESC, a.rowid DESC
+      WHERE a.turn_id IS NOT NULL OR i.files_json IS NOT NULL
+      ORDER BY coalesce(a.captured_at,t.queued_at) DESC, t.rowid DESC
       LIMIT ?
     `).all(limit) as SqliteRow[];
     return rows.map((row) => ({
@@ -571,7 +574,7 @@ export class SqliteControlPlane implements ControlPlane {
         s.pi_session_id, s.pi_session_file, s.status AS session_status,
         s.created_at AS session_created_at, s.updated_at AS session_updated_at,
         i.account_id AS inbox_account_id, i.channel_message_id, i.peer_id AS inbox_peer_id,
-        i.sender_id, i.sequence, i.context_token, i.text AS inbox_text, i.received_at, i.raw_json, i.images_json
+        i.sender_id, i.sequence, i.context_token, i.text AS inbox_text, i.received_at, i.raw_json, i.images_json, i.files_json
       FROM turns t JOIN sessions s ON s.id = t.session_id JOIN inbox i ON i.id = t.inbox_id WHERE t.id = ?
     `).get(turnId) as SqliteRow | undefined;
     if (row === undefined) throw new Error(`Turn not found after claim: ${turnId}`);
@@ -586,7 +589,7 @@ export class SqliteControlPlane implements ControlPlane {
         id: row.inbox_id, account_id: row.inbox_account_id, channel_message_id: row.channel_message_id,
         peer_id: row.inbox_peer_id, sender_id: row.sender_id, sequence: row.sequence,
         context_token: row.context_token, text: row.inbox_text, received_at: row.received_at, raw_json: row.raw_json,
-        images_json: row.images_json,
+        images_json: row.images_json, files_json: row.files_json,
       }),
       ...this.continuationForTurn(turnId),
     };
@@ -623,10 +626,12 @@ export class SqliteControlPlane implements ControlPlane {
     };
   }
 
-  private toMessage(row: SqliteRow): InboundMessage {
+  private toMessage(row: SqliteRow, redactFiles = false): InboundMessage {
     const sequenceValue = row.sequence;
     const contextToken = nullableText(row, "context_token");
     const rawValue = json(nullableText(row, "raw_json"));
+    const filesValue = json(nullableText(row, "files_json"));
+    const files = Array.isArray(filesValue) ? filesValue as InboundFileReference[] : undefined;
     const imagesValue = json(nullableText(row, "images_json"));
     const images = Array.isArray(imagesValue) ? imagesValue as InboundImage[] : undefined;
     return {
@@ -636,6 +641,7 @@ export class SqliteControlPlane implements ControlPlane {
       ...(sequenceValue === null || sequenceValue === undefined ? {} : { sequence: integer(row, "sequence") }),
       ...(contextToken === undefined ? {} : { contextToken }),
       ...(images === undefined ? {} : { images }),
+      ...(files === undefined ? {} : { files: redactFiles ? files.map(({ itemIndex, name, declaredBytes }) => ({ itemIndex, name, ...(declaredBytes === undefined ? {} : { declaredBytes }) })) : files }),
       ...(rawValue === undefined ? {} : { raw: rawValue }),
     };
   }

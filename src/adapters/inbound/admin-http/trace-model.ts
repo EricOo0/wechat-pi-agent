@@ -21,6 +21,7 @@ export interface TraceSpan {
 export function buildTraceSpans(events: TraceEvent[], turnStatus: string): TraceSpan[] {
   const spans: TraceSpan[] = [];
   const calls = new Map<string, TraceSpan>();
+  const files = new Map<string, TraceSpan>();
   const active = turnStatus === "RUNNING";
   for (const event of [...events].sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0))) {
     const kind = event.event_type ?? "unknown";
@@ -30,6 +31,18 @@ export function buildTraceSpans(events: TraceEvent[], turnStatus: string): Trace
     if (kind === "agent_start" || kind === "agent_end") {
       for (const span of calls.values()) { if (span.end === null) span.status = "incomplete"; }
       calls.clear();
+    }
+    if (kind.startsWith("file_")) {
+      const labels: Record<string, string> = { file_save: "保存文件", file_upload: "上传文件", file_selected: "选择文件", file_input: "附加模型输入", file_error: "文件处理失败" };
+      const key = `${kind}:${(typeof data.eventId === "string" ? data.eventId : typeof data.fileId === "string" ? data.fileId : String(event.ordinal))}`;
+      let span = files.get(key);
+      if (!span || data.status === "started") {
+        span = { id: `file:${spans.length}`, name: `${labels[kind] ?? kind}${typeof data.name === "string" ? " · " + data.name : ""}`, kind: "file", status: active ? "running" : "incomplete", start: at, end: null, input: data, output: null, events: [] };
+        spans.push(span); files.set(key, span);
+      }
+      span.events.push(event);
+      if (data.status !== "started") { span.end = at; span.output = data; span.status = data.status === "failed" ? "failed" : "succeeded"; }
+      continue;
     }
     if (kind.startsWith("tool_execution_")) {
       const callId = typeof data.toolCallId === "string" ? data.toolCallId : null;

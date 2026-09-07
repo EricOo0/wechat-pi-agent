@@ -162,4 +162,19 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
       created_at TEXT NOT NULL
     ) STRICT;`,
   },
+  {
+    version: 6,
+    sql: `ALTER TABLE inbox ADD COLUMN files_json TEXT;
+      CREATE TABLE user_files (
+        id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, message_id TEXT NOT NULL, item_index INTEGER NOT NULL,
+        name TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('ready','failed')), bytes INTEGER NOT NULL,
+        sha256 TEXT NOT NULL, mime_type TEXT NOT NULL, error_code TEXT, created_at TEXT NOT NULL,
+        UNIQUE(owner_id,message_id,item_index)
+      ) STRICT;
+      CREATE INDEX user_files_owner_idx ON user_files(owner_id,created_at DESC);
+      CREATE TABLE model_file_refs (
+        file_id TEXT NOT NULL REFERENCES user_files(id), scope TEXT NOT NULL, remote_id TEXT NOT NULL,
+        PRIMARY KEY(file_id,scope)
+      ) STRICT;`,
+  },
 ];

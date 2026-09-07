@@ -47,7 +47,7 @@ export async function downloadILinkImage(image: ILinkImageItem, options: ILinkIm
   return { path, mimeType: detected.mimeType, bytes: decrypted.length };
 }
 
-function decryptIfNeeded(encrypted: Buffer, itemHexKey?: string, mediaBase64Key?: string): Buffer {
+export function decryptIfNeeded(encrypted: Buffer, itemHexKey?: string, mediaBase64Key?: string): Buffer {
   if (!itemHexKey && !mediaBase64Key) return encrypted;
   const key = itemHexKey ? parseHexKey(itemHexKey) : parseBase64Key(mediaBase64Key!);
   const decipher = createDecipheriv("aes-128-ecb", key, null);
@@ -84,7 +84,7 @@ function detectImage(data: Buffer): { mimeType: InboundImage["mimeType"]; extens
   return undefined;
 }
 
-async function readLimitedBody(response: Response, limit: number): Promise<Buffer> {
+export async function readLimitedBody(response: Response, limit: number): Promise<Buffer> {
   const declaredLength = Number(response.headers.get("content-length") ?? "0");
   if (Number.isFinite(declaredLength) && declaredLength > limit) throw new Error(`iLink image download exceeds ${limit} byte limit`);
   if (!response.body) return Buffer.alloc(0);
@@ -106,7 +106,7 @@ async function readLimitedBody(response: Response, limit: number): Promise<Buffe
   return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), total);
 }
 
-function validateCdnUrl(url: URL): void {
+export function validateCdnUrl(url: URL): void {
   const hostname = url.hostname.toLowerCase().replace(/\.$/u, "");
   if (url.protocol !== "https:" || !(hostname === "weixin.qq.com" || hostname.endsWith(".weixin.qq.com"))) {
     throw new Error("iLink image CDN URL must use HTTPS on a weixin.qq.com host");

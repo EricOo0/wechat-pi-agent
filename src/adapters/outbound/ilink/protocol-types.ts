@@ -29,6 +29,7 @@ export interface ILinkMessageItem {
   type?: number;
   text_item?: ILinkTextItem;
   image_item?: ILinkImageItem;
+  file_item?: { media?: ILinkCdnMedia; file_name?: string; len?: string; md5?: string };
 }
 
 export interface ILinkMessage {

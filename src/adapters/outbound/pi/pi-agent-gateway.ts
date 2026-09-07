@@ -1,3 +1,12 @@
+import { redactFileErrors } from "./file-input/redact-file-errors.js";
+import type { UserFileRepository } from "../../../application/interfaces/user-file-repository.js";
+import type { FileStorage } from "../../../application/interfaces/file-storage.js";
+import { subjectKey } from "../../../domain/policy/permissions.js";
+import { FileInputError, MAX_FILES_PER_MESSAGE } from "../../../domain/files/user-file.js";
+import { CodexFileUpload } from "./file-input/codex/codex-file-upload.js";
+import { CodexFileInput } from "./file-input/codex/codex-file-input.js";
+import { ModelFileInputRouter } from "./file-input/model-file-input-router.js";
+import { createFileTools } from "./tools/file-tools.js";
 import { mkdir, readFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { AgentSession, AgentSessionEvent, CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
@@ -15,6 +24,7 @@ import type { SandboxExecutor } from "../../../application/interfaces/sandbox-ex
 
 export interface PiAgentGatewayOptions {
   logger?: Pick<Logger, "info" | "warn">;
+  files?: { repository: UserFileRepository; storage: FileStorage };
   cwd: string;
   provider: string;
   modelId: string;
@@ -38,6 +48,8 @@ interface SessionHandle {
   session: AgentSession;
   manager: SessionManager;
   context: PermissionContext;
+  selectedFiles: Set<string>;
+  request?: AgentRunRequest;
 }
 
 export class PiAgentGateway implements Agent {
@@ -48,6 +60,7 @@ export class PiAgentGateway implements Agent {
     private readonly runtime: ModelRuntime,
     private readonly resourceLoader: DefaultResourceLoader,
     private readonly compiler: PolicyCompiler,
+    private readonly fileInput?: ModelFileInputRouter,
   ) {}
 
   public static async create(options: PiAgentGatewayOptions): Promise<PiAgentGateway> {
@@ -88,11 +101,14 @@ export class PiAgentGateway implements Agent {
       protectedWritePaths: options.protectedWritePaths,
       deniedNetworkPorts: options.deniedNetworkPorts,
     });
-    return new PiAgentGateway(options, runtime, resourceLoader, compiler);
+    const fileInput = options.files ? new ModelFileInputRouter(new CodexFileInput(options.files.repository, new CodexFileUpload(options.files.repository, options.files.storage, async () => (await runtime.getAuth("openai-codex"))?.auth))) : undefined;
+    return new PiAgentGateway(options, runtime, resourceLoader, compiler, fileInput);
   }
 
   public async runTurn(request: AgentRunRequest): Promise<AgentRunResult> {
     const handle = await this.getOrCreateSession(request);
+    handle.request = request;
+    handle.selectedFiles.clear();
     request.onSessionReady?.(handle.manager.getSessionId(), handle.manager.getSessionFile());
     const permission = this.options.permissions.snapshot(handle.context);
     request.onInvocation?.({
@@ -125,7 +141,11 @@ export class PiAgentGateway implements Agent {
       if (images.length > 0 && !handle.session.model?.input.includes("image")) {
         throw new Error(`Pi model does not support image input: ${this.options.provider}/${this.options.modelId}`);
       }
-      await handle.session.prompt(expanded.prompt, { expandPromptTemplates: false, ...(images.length === 0 ? {} : { images }) });
+      await handle.session.prompt(expanded.prompt + (request.files?.length ? `\n\nUser file library additions (metadata only; call file_use to read originals): ${JSON.stringify(request.files)}` : ""), { expandPromptTemplates: false, ...(images.length === 0 ? {} : { images }) });
+      const latest = handle.session.agent.state.messages.at(-1);
+      if (handle.selectedFiles.size && latest?.role === "assistant" && (latest.stopReason === "error" || latest.stopReason === "aborted")) {
+        throw new FileInputError("FILE_MODEL_FAILED", "文件分析未完成，模型接口返回错误；原文件已保存，可以稍后重试。");
+      }
       if (this.options.permissions.snapshot(handle.context).revision !== permission.revision) throw new Error("Permissions changed; turn cancelled");
       const text = handle.session.getLastAssistantText()?.trim();
       if (!text) throw new Error("Pi completed without assistant text");
@@ -135,7 +155,15 @@ export class PiAgentGateway implements Agent {
         piSessionId: handle.manager.getSessionId(),
         ...(piSessionFile === undefined ? {} : { piSessionFile }),
       };
+    } catch (error) {
+      if (handle.selectedFiles.size && !request.signal?.aborted) {
+        const safe = error instanceof FileInputError ? error : new FileInputError("FILE_MODEL_FAILED", "文件分析未完成，模型接口返回错误；原文件已保存，可以稍后重试。");
+        throw safe;
+      }
+      throw error;
     } finally {
+      handle.selectedFiles.clear();
+      delete handle.request;
       request.signal?.removeEventListener("abort", onAbort);
       unsubscribe();
     }
@@ -179,10 +207,22 @@ export class PiAgentGateway implements Agent {
     const model = this.runtime.getModel(this.options.provider, this.options.modelId);
     if (!model) throw new Error(`Pi model not found: ${this.options.provider}/${this.options.modelId}`);
     const initialContext = request.permissionContext;
-    const customTools = createAgentTools({
+    const selectedFiles = new Set<string>();
+    const customTools: ReturnType<typeof createAgentTools> = createAgentTools({
       context: () => this.sessions.get(request.session.id)?.context ?? initialContext,
       permissions: this.options.permissions, compiler: this.compiler, executor: this.options.executor,
     });
+    if (this.options.files && this.fileInput) {
+      const router = this.fileInput;
+      customTools.push(...createFileTools(this.options.files.repository,
+        () => subjectKey(this.sessions.get(request.session.id)?.context.subject ?? initialContext.subject),
+        (id, toolCallId) => {
+          router.assertSupported(model);
+          if (!selectedFiles.has(id) && selectedFiles.size >= MAX_FILES_PER_MESSAGE) throw new FileInputError("FILE_COUNT_LIMIT", "每轮最多分析 3 个文件，请分开提问。");
+          selectedFiles.add(id);
+          this.sessions.get(request.session.id)?.request?.onEvent?.({ type: "file_selected", at: new Date(), data: { fileId: id, toolCallId, status: "succeeded" } });
+        }));
+    }
     const activeToolNames = customTools.map((tool) => tool.name);
     const { session } = await createAgentSession({
       cwd: this.options.cwd,
@@ -200,7 +240,21 @@ export class PiAgentGateway implements Agent {
       session.dispose();
       throw new Error(`Pi tool policy violation: unexpected or unmanaged tools (${[...unexpected, ...unmanaged.map((tool) => tool.name)].join(", ")})`);
     }
-    const handle = { session, manager, context: request.permissionContext };
+    const previousStream = session.agent.streamFunction;
+    session.agent.streamFunction = async (...args) => {
+      const stream = await previousStream(...args);
+      return selectedFiles.size ? redactFileErrors(stream) : stream;
+    };
+    const previousPayload = session.agent.onPayload;
+    session.agent.onPayload = async (payload, currentModel) => {
+      const base = await previousPayload?.(payload, currentModel) ?? payload;
+      const active = this.sessions.get(request.session.id);
+      if (!active?.request || !this.fileInput || !selectedFiles.size) return base;
+      if (active.request.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      return this.fileInput.apply(base, currentModel, { ownerId: subjectKey(active.context.subject), fileIds: [...selectedFiles],
+        ...(active.request.signal === undefined ? {} : { signal: active.request.signal }), emit: event => active.request?.onEvent?.(event) });
+    };
+    const handle: SessionHandle = { session, manager, context: request.permissionContext, selectedFiles };
     this.sessions.set(request.session.id, handle);
     return handle;
   }

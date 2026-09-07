@@ -1,3 +1,4 @@
+import type { fileSummary } from "../../domain/files/user-file.js";
 import type { AgentEvent } from "../../domain/execution/step.js";
 import type { ConversationSession } from "../../domain/conversation/session.js";
 import type { InboundImage } from "../../domain/messaging/inbound-message.js";
@@ -18,6 +19,7 @@ export interface AgentRunRequest {
   prompt: string;
   permissionContext?: PermissionContext;
   images?: readonly InboundImage[];
+  files?: readonly ReturnType<typeof fileSummary>[];
   signal?: AbortSignal;
   onInvocation?: (trace: AgentInvocationTrace) => void;
   onSessionReady?: (piSessionId: string, piSessionFile?: string) => void;

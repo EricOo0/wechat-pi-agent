@@ -55,6 +55,27 @@ Agent 目录可用 `PI_CODING_AGENT_DIR` 覆盖。工程不会默认扫描 `~/.c
 
 Skill 指引不授予执行权限；受限模式下已加载 Skill 目录可读且受写保护，后续脚本、网络及写入仍受权限系统控制。
 
+## PDF 文件与用户文件库
+
+支持从微信接收 PDF：仅发送文件时回复保存结果；随后可以说“查询我的简历”“分析 resume.pdf”。文件归属于用户，跨 Session 保留；`/new` 不删除文件，也不影响新会话查询自己的文件。多份候选文件应由用户确认选择。
+
+- 原件：`DATA_DIR/files/<subjectKey>/<fileId>/original.pdf`；目录 0700、文件 0600。文件名只用于展示，原件路径由系统生成。
+- 索引：主 SQLite 的 `user_files` 表。`model_file_refs` 保存与 Codex 认证账号隔离的远端文件 ID，签名下载 URL 只作短期内存缓存。
+- 首版限制：单 PDF 最多 20 MiB，每条消息最多保存 3 份，每轮最多选择 3 份，单用户已保存原件最多 500 MiB。超限或失败明确回复；不自动删除旧文件。清理接口尚未提供，存储清理由管理员处理。
+- 首版直接文件分析接入 `openai-codex-responses` 的官方 ChatGPT 后端。其他通道的文字/图片行为保持原样，调用文件工具时会提示文件输入尚未接入，无需用户维护 provider 能力配置。
+
+Agent 工具：`file_list({query?, offset?})` 跨会话查询当前用户文件，`file_use({fileId})` 选择文件。选择后由模型接入层上传/复用原件，在 Pi 的 `onPayload` 中附加 `input_file.file_url`；模型调用、认证接入和流式回复仍由 Pi 完成。系统不本地解析 PDF，不另配 OpenAI API Key，也不修改 Pi 依赖源码。
+
+原件只在需要分析时上传。远端链接有效时复用；链接缓存失效后用远端 ID 获取链接，远端文件不存在时自动重传本地原件。上传/刷新出错保留本地文件；上传超时可能留下远端孤立文件，删除/长期保留策略尚未接入。
+
+文件选择仅在当前 Turn 有效，历史只保存 ID 和元信息；同一 Turn 后续模型轮次会重复附加已选文件链接。后续 Turn 或压缩后需要原文时，Agent 再次 `file_use`，不会自动把全部历史附件加入每次请求。当前选中原件的大小/哈希在使用前会重新校验。
+
+下载在 SenderPolicy 过滤和消息落库之后、Turn 执行时进行。文件 CDN 引用只持久化在受保护的 inbox 字段；raw 消息、Admin 文件详情和文件事件不返回密钥/签名 URL。文件库属于控制面保护目录，通用 read/bash 不因新增文件能力而获得访问权限。
+
+Trace 会展示无模型调用的文件接收 Turn，以及 `file_save`、`file_selected`、`file_upload`、`file_input`、`file_error` 的 span。保存、上传、附加和模型完成分别表示不同阶段。现有 Turn 崩溃恢复限制仍适用，不承诺中断任务自动精确续传。
+
+验证：`npm run check` 执行离线回归。可选 `npm run build` 后执行 `node scripts/verify-file-input.mjs --live`，会通过当前 Codex 登录上传一份无敏感内容的合成 PDF，运行两个独立 Session 检查跨会话读取和历史中无签名 URL；这会消耗模型用量，并创建远端测试文件。具体结果见 `docs/designs/pdf-attachments/gateway-verification.json`。真实微信 PDF 收发仍须单独验收。
+
 ## 用户权限与系统沙箱
 
 默认每个用户仅能读写个人工作目录、读取已批准的 Skill 目录。Bash 与工具网络默认关闭。模型调用和微信收发属于控制面，不受工具网络开关影响。

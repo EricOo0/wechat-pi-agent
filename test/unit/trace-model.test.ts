@@ -22,3 +22,15 @@ describe("trace span reconstruction", () => {
     expect(buildTraceSpans([{ event_type: "message_start" }, { event_type: "skill_load", eventData: { status: "failed", requestedName: "missing" } }], "FAILED")).toEqual([expect.objectContaining({ name: "missing", kind: "skill", status: "failed" })]);
   });
 });
+
+it('pairs file stages and keeps file selection visible', () => {
+  const spans = buildTraceSpans([
+    { event_type: 'file_upload', ordinal: 0, event_at: '2026-09-07T00:00:00Z', eventData: { eventId: 'attempt', fileId: 'f', status: 'started' } },
+    { event_type: 'file_selected', ordinal: 1, event_at: '2026-09-07T00:00:01Z', eventData: { fileId: 'f', toolCallId: 'tool', status: 'succeeded' } },
+    { event_type: 'file_upload', ordinal: 2, event_at: '2026-09-07T00:00:02Z', eventData: { eventId: 'attempt', fileId: 'f', status: 'failed', errorCode: 'FILE_UPLOAD_FAILED' } },
+  ], 'COMPLETED');
+  expect(spans).toHaveLength(2);
+  expect(spans[0]).toMatchObject({ kind: 'file', status: 'failed', end: Date.parse('2026-09-07T00:00:02Z') });
+  expect(spans[0]?.events).toHaveLength(2);
+  expect(spans[1]?.status).toBe('succeeded');
+});

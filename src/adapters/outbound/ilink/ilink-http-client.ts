@@ -111,6 +111,13 @@ export class ILinkHttpClient implements Channel {
       .map((item) => item.text_item?.text ?? "")
       .join("\n")
       .trim();
+    const files = items.flatMap((item, itemIndex) => {
+      if (item.type !== ILinkItemType.FILE) return [];
+      const bytes = Number(item.file_item?.len);
+      return [{ itemIndex, name: (typeof item.file_item?.file_name === "string" ? item.file_item.file_name : "未命名文件").slice(0, 255),
+        ...(Number.isSafeInteger(bytes) && bytes >= 0 ? { declaredBytes: bytes } : {}),
+        ...(item.file_item?.media === undefined ? {} : { media: item.file_item.media }) }];
+    });
     const imageItems = items
       .filter((item) => item.type === ILinkItemType.IMAGE && item.image_item !== undefined)
       .slice(0, 4);
@@ -128,12 +135,12 @@ export class ILinkHttpClient implements Channel {
         this.options.onMediaError?.(error);
       }
     }
-    if (!text && images.length === 0 && imageItems.length === 0) return undefined;
-    const normalizedText = text || (images.length > 0
+    if (!text && images.length === 0 && imageItems.length === 0 && files.length === 0) return undefined;
+    const normalizedText = text || (files.length > 0 ? "" : images.length > 0
       ? "请分析用户发送的图片。"
       : "用户发送了一张图片，但图片内容下载失败。请提示用户稍后重试。");
     const receivedAt = new Date(message.create_time_ms ?? Date.now());
-    const rawId = message.message_id?.toString() ?? `${message.from_user_id}:${message.seq ?? ""}:${message.create_time_ms ?? ""}:${normalizedText}:${imageItems.length}`;
+    const rawId = message.message_id?.toString() ?? `${message.from_user_id}:${message.seq ?? ""}:${message.create_time_ms ?? ""}:${normalizedText}:${imageItems.length}${files.length ? ":" + JSON.stringify(files.map(file => [file.name, file.declaredBytes])) : ""}`;
     const channelMessageId = message.message_id?.toString() ?? createHash("sha256").update(rawId).digest("hex");
     return {
       id: `msg_${channelMessageId}`,
@@ -145,6 +152,7 @@ export class ILinkHttpClient implements Channel {
       ...(message.context_token === undefined ? {} : { contextToken: message.context_token }),
       text: normalizedText,
       ...(images.length === 0 ? {} : { images }),
+      ...(files.length === 0 ? {} : { files }),
       receivedAt,
       raw: this.redactRawMessage(message),
     };
@@ -166,7 +174,7 @@ export class ILinkHttpClient implements Channel {
               has_thumb_media: item.image_item.thumb_media !== undefined,
             },
           }
-        : item),
+        : item.type === ILinkItemType.FILE ? { type: item.type, file_item: { file_name: item.file_item?.file_name, len: item.file_item?.len } } : item),
     };
   }
 
