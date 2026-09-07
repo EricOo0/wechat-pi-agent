@@ -2,11 +2,11 @@
   "status": "implemented_locally_verified",
   "score": null,
   "verification": {
-    "tests": 85,
+    "tests": 87,
     "typecheck": "passed",
     "lint": "passed",
     "build": "passed",
-    "live_codex": "synthetic PDF passed in two independent Sessions",
+    "live_codex": "file-only upload then natural-language follow-up passed; cross-session query also passed",
     "trace_ui": "file-only turn and stage inspector checked"
   },
   "remaining": [

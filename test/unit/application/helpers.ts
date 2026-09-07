@@ -87,6 +87,7 @@ export function controlPlane(overrides: Partial<ControlPlane> = {}): ControlPlan
     recoverInterrupted: vi.fn(() => ({ turns: 0, outbox: 0 })),
     archiveActiveSession: vi.fn(() => undefined),
     getTurnDetails: vi.fn(() => undefined),
+    getSessionContextEvents: vi.fn(() => []),
     getAgentTrace: vi.fn(() => undefined),
     getRecentAgentTraces: vi.fn(() => []),
     getRecentErrors: vi.fn(() => []),

@@ -1,84 +1,89 @@
 {
-  "testedAt": "2026-09-07T05:08:43.627Z",
+  "testedAt": "2026-09-07T05:25:05.441Z",
   "model": "gpt-5.6-terra",
   "synthetic": true,
   "results": [
     {
       "session": "one",
-      "output": "GATEWAY_fa616c108bc9",
+      "output": "GATEWAY_99e7aca14548",
       "markerMatched": true,
       "fileEvents": [
         {
-          "type": "file_selected",
-          "at": "2026-09-07T05:08:21.612Z",
+          "type": "context_replay",
           "data": {
-            "fileId": "fil_a76e71c796e65104c4144abc309918ad",
-            "toolCallId": "call_SyuFrnpKcFZWfQc5WyyvLJwQ|fc_05418ca556bd4303016a9e46c5b9d087d0aabd50f140e36395",
+            "contextEventId": "file_receipt:trn_probe_probe",
+            "kind": "file_receipt",
+            "content": "{\"at\":\"2026-09-07T05:24:46.457Z\",\"userAction\":\"uploaded_files\",\"files\":[{\"fileId\":\"fil_3447f97bafb8cda48c9aa50ce4c979ce\",\"name\":\"gateway-verification.pdf\",\"status\":\"ready\",\"bytes\":595,\"mimeType\":\"application/pdf\"}],\"applicationReply\":\"已保存：gateway-verification.pdf（fil_3447f97bafb8cda48c9aa50ce4c979ce）\\n可以告诉我希望如何分析；换新会话后也能查询这些文件。\"}",
+            "status": "succeeded"
+          }
+        },
+        {
+          "type": "file_selected",
+          "data": {
+            "fileId": "fil_3447f97bafb8cda48c9aa50ce4c979ce",
+            "toolCallId": "call_wKj8RHLjUG4Kn7VMK3qzP8In|fc_062091e35f5fb922016a9e4aa1a04087d0bd0328a23e9e4efa",
             "status": "succeeded"
           }
         },
         {
           "type": "file_upload",
-          "at": "2026-09-07T05:08:21.615Z",
           "data": {
-            "eventId": "84c8d9ad-dc28-467d-8cdf-e1259513dc2d",
-            "fileId": "fil_a76e71c796e65104c4144abc309918ad",
+            "eventId": "3746e769-c356-426e-9231-ff1450b43174",
+            "fileId": "fil_3447f97bafb8cda48c9aa50ce4c979ce",
             "name": "gateway-verification.pdf",
             "status": "started"
           }
         },
         {
           "type": "file_upload",
-          "at": "2026-09-07T05:08:23.653Z",
           "data": {
-            "eventId": "84c8d9ad-dc28-467d-8cdf-e1259513dc2d",
-            "fileId": "fil_a76e71c796e65104c4144abc309918ad",
+            "eventId": "3746e769-c356-426e-9231-ff1450b43174",
+            "fileId": "fil_3447f97bafb8cda48c9aa50ce4c979ce",
             "name": "gateway-verification.pdf",
             "status": "succeeded",
             "reused": false,
-            "durationMs": 2038
+            "durationMs": 1798
           }
         },
         {
           "type": "file_input",
-          "at": "2026-09-07T05:08:23.653Z",
           "data": {
             "fileIds": [
-              "fil_a76e71c796e65104c4144abc309918ad"
+              "fil_3447f97bafb8cda48c9aa50ce4c979ce"
             ],
             "status": "succeeded",
             "transport": "file_url"
           }
         }
       ],
+      "replayedReceipt": true,
       "historyHasSignedUrl": false
     },
     {
       "session": "two",
-      "output": "GATEWAY_fa616c108bc9",
+      "output": "GATEWAY_99e7aca14548",
       "markerMatched": true,
       "fileEvents": [
         {
           "type": "file_selected",
-          "at": "2026-09-07T05:08:38.908Z",
           "data": {
-            "fileId": "fil_a76e71c796e65104c4144abc309918ad",
-            "toolCallId": "call_BquedZhhM7GM5irICgck2V7x|fc_0584494a755b1c46016a9e46d6a9f087d099976b8d619868f4",
+            "fileId": "fil_3447f97bafb8cda48c9aa50ce4c979ce",
+            "toolCallId": "call_SiCVhzymdDl09XLSoquIyWcw|fc_0280ef5ffc6012a1016a9e4aac4dec87d0b3877978831e60ec",
             "status": "succeeded"
           }
         },
         {
           "type": "file_input",
-          "at": "2026-09-07T05:08:38.913Z",
           "data": {
             "fileIds": [
-              "fil_a76e71c796e65104c4144abc309918ad"
+              "fil_3447f97bafb8cda48c9aa50ce4c979ce"
             ],
             "status": "succeeded",
             "transport": "file_url"
           }
         }
       ],
+      "replayedReceipt": false,
       "historyHasSignedUrl": false
     }
   ]

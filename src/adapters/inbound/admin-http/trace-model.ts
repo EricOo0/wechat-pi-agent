@@ -58,8 +58,8 @@ export function buildTraceSpans(events: TraceEvent[], turnStatus: string): Trace
       if (kind === "tool_execution_end") { span.end = at; span.output = data.result ?? null; span.status = data.isError === true ? "failed" : "succeeded"; }
       continue;
     }
-    if (kind === "skill_load" || kind === "auto_retry_start" || kind === "auto_retry_end" || kind.includes("compaction")) {
-      spans.push({ id: `event:${spans.length}`, name: kind === "skill_load" ? (typeof data.name === "string" ? data.name : typeof data.requestedName === "string" ? data.requestedName : "Skill") : kind, kind: kind === "skill_load" ? "skill" : "event", status: data.status === "failed" || data.success === false ? "failed" : "succeeded", start: at, end: at, input: data, output: null, events: [event] });
+    if (kind === "context_replay" || kind === "skill_load" || kind === "auto_retry_start" || kind === "auto_retry_end" || kind.includes("compaction")) {
+      spans.push({ id: `event:${spans.length}`, name: kind === "context_replay" ? "补入会话上下文" : kind === "skill_load" ? (typeof data.name === "string" ? data.name : typeof data.requestedName === "string" ? data.requestedName : "Skill") : kind, kind: kind === "skill_load" ? "skill" : "event", status: data.status === "failed" || data.success === false ? "failed" : "succeeded", start: at, end: at, input: data, output: null, events: [event] });
     }
   }
   return spans;

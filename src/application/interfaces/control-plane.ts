@@ -1,3 +1,4 @@
+import type { ConversationContextEvent } from "../../domain/conversation/context-event.js";
 import type { InboundBatch, InboundMessage } from "../../domain/messaging/inbound-message.js";
 import type { ClaimedTurn } from "../../domain/execution/turn.js";
 import type { AgentEvent } from "../../domain/execution/step.js";
@@ -39,6 +40,7 @@ export interface ControlPlane {
   recoverInterrupted(now: Date): { turns: number; outbox: number };
   archiveActiveSession(accountId: string, peerId: string): ConversationSession | undefined;
   getTurnDetails(turnId: string): unknown;
+  getSessionContextEvents(beforeTurnId: string, ownerId: string): ConversationContextEvent[];
   getAgentTrace(turnId: string): unknown;
   getRecentAgentTraces(limit: number): readonly unknown[];
   getRecentErrors(limit: number): readonly unknown[];

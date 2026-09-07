@@ -1,3 +1,4 @@
+import type { AgentRunRequest, AgentRunResult } from "../../src/application/interfaces/agent.js";
 import { createCipheriv } from "node:crypto";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -30,7 +31,7 @@ describe('user PDF library',()=>{
   const {control,repo,store,permissions}=await setup();const msg=message();
   control.ingestBatch({accountId:'bot',previousCursor:'',nextCursor:'1',messages:[msg]});
   const download=vi.fn(()=>Promise.resolve(Buffer.from('%PDF-1.4\nfixture')));
-  const save=new SaveInboundFiles(repo,store,{download});const run=vi.fn(()=>Promise.resolve({text:'unexpected model call'}));
+  const save=new SaveInboundFiles(repo,store,{download});const run=vi.fn<(request: AgentRunRequest) => Promise<AgentRunResult>>(()=>Promise.resolve({text:'model response'}));
   const worker=new RunNextTurn(control,{runTurn:run,checkReady:()=>Promise.resolve({ready:true})},new DryRunChannel(),new ReplyChunker(),{ownerId:'worker'},undefined,undefined,permissions,save);
   const result=await worker.execute();expect(result.status).toBe('completed');expect(run).not.toHaveBeenCalled();expect(download).toHaveBeenCalledTimes(1);
   const owner=subjectKey(permissions.context(msg,'old').subject);const [file]=repo.list(owner);expect(file?.status).toBe('ready');expect(await store.read(file!)).toEqual(Buffer.from('%PDF-1.4\nfixture'));
@@ -38,6 +39,19 @@ describe('user PDF library',()=>{
   const details=control.getTurnDetails(recent[0]!.turnId);expect(JSON.stringify(details)).not.toContain('secret-download-ref');expect(JSON.stringify(details)).not.toContain('secret-key');expect(JSON.stringify(details)).toContain('file_save');
   expect(control.getPersistedMessage('bot','one')?.files?.[0]?.media?.aes_key).toBe('secret-key');
   await save.execute(owner,msg,()=>{});expect(download).toHaveBeenCalledTimes(1);
+  const followup: InboundMessage = { id:'followup', channelMessageId:'followup', accountId:msg.accountId, peerId:msg.peerId, senderId:msg.senderId, receivedAt:new Date(), text:'帮我看一下这个简历' };
+  control.ingestBatch({accountId:'bot',previousCursor:'1',nextCursor:'2',messages:[followup]});
+  await worker.execute();
+  expect(run).toHaveBeenCalledTimes(1);
+  const context = run.mock.calls[0]?.[0].contextEvents;
+  expect(context).toHaveLength(1);
+  expect(context?.[0]?.content).toContain(file!.id);
+  expect(context?.[0]?.content).toContain('已保存');
+  expect(JSON.stringify(context)).not.toContain('secret-download-ref');
+  const contextTurn = control.getRecentAgentTraces(100) as Array<{turnId:string}>;
+  // The mock Agent does not create an invocation snapshot; query the known deterministic turn ID.
+  expect(control.getSessionContextEvents('trn_bot_followup','b'.repeat(64))).toEqual([]);
+  expect(contextTurn).toHaveLength(1);
   control.archiveActiveSession('bot','owner');
   const selected:string[]=[];const tools=createFileTools(repo,()=>subjectKey(permissions.context(msg,'new-session').subject),id=>selected.push(id));
   const listing=await tools[0]!.execute('list',{query:'resume'} as never,undefined,undefined,{} as never);expect(JSON.stringify(listing)).toContain(file!.id);
@@ -67,4 +81,23 @@ describe('user PDF library',()=>{
   const second=await save.execute(owner,msg,()=>{});expect(second.files[0]?.id).toBe(first.files[0]?.id);expect(repo.list(owner)).toHaveLength(1);
   await writeFile(`${root}/files/${owner}/${second.files[0]!.id}/original.pdf`,'modified');await expect(store.read(second.files[0]!)).rejects.toThrow('校验');
  });
+ it('replays only earlier receipts from the current session',async()=>{
+  const {control,repo,store,permissions}=await setup();
+  const first=message('first'),future=message('future');
+  const question:InboundMessage={id:'question',channelMessageId:'question',accountId:'bot',peerId:'owner',senderId:'owner',text:'这个简历',receivedAt:new Date()};
+  control.ingestBatch({accountId:'bot',previousCursor:'',nextCursor:'batch',messages:[first,question,future]});
+  const save=new SaveInboundFiles(repo,store,{download:()=>Promise.resolve(Buffer.from('%PDF-1.4 fixture'))});
+  const owner=subjectKey(permissions.context(first,'s').subject);
+  const a=control.claimNextTurn('a',30000)!;
+  const receipt=await save.execute(owner,first,()=>{});control.completeTurn({turnId:a.turn.id,finalResponse:receipt.receipt,chunks:[receipt.receipt]});
+  const current=control.claimNextTurn('b',30000)!;
+  const later=control.claimNextTurn('c',30000)!;
+  const laterReceipt=await save.execute(owner,future,()=>{});control.completeTurn({turnId:later.turn.id,finalResponse:laterReceipt.receipt,chunks:[laterReceipt.receipt]});
+  const events=control.getSessionContextEvents(current.turn.id,owner);
+  expect(events).toHaveLength(1);expect(events[0]?.content).toContain(receipt.files[0]!.id);expect(events[0]?.content).not.toContain(laterReceipt.files[0]!.id);
+  control.archiveActiveSession('bot','owner');
+  control.ingestBatch({accountId:'bot',previousCursor:'batch',nextCursor:'new',messages:[{...question,id:'new',channelMessageId:'new'}]});
+  expect(control.getSessionContextEvents('trn_bot_new',owner)).toEqual([]);
+ });
+
 });

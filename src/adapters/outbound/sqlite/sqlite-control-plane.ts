@@ -1,3 +1,4 @@
+import type { ConversationContextEvent } from "../../../domain/conversation/context-event.js";
 import type { InboundFileReference } from "../../../domain/files/user-file.js";
 import { DatabaseSync } from "node:sqlite";
 import type { PathLike } from "node:fs";
@@ -425,6 +426,30 @@ export class SqliteControlPlane implements ControlPlane {
       const timestamp = nowIso();
       this.db.prepare("UPDATE sessions SET status = 'ARCHIVED', archived_at = ?, updated_at = ? WHERE id = ?").run(timestamp, timestamp, text(row, "id"));
       return this.toSession({ ...row, status: "ARCHIVED", archived_at: timestamp, updated_at: timestamp });
+    });
+  }
+
+  public getSessionContextEvents(beforeTurnId: string, ownerId: string): ConversationContextEvent[] {
+    // Replay completed file-only application replies, independent of trace retention.
+    // The current Turn is the upper bound: never attach a later upload to an earlier request.
+    const rows = this.db.prepare(`
+      SELECT t.id, t.queued_at, t.final_response, i.channel_message_id
+      FROM turns t JOIN inbox i ON i.id=t.inbox_id JOIN turns current ON current.id=?
+      WHERE t.session_id=current.session_id AND t.rowid<current.rowid
+        AND t.final_response IS NOT NULL AND trim(i.text)=''
+        AND i.files_json IS NOT NULL AND coalesce(json_array_length(i.images_json),0)=0
+      ORDER BY t.rowid DESC LIMIT 20
+    `).all(beforeTurnId) as SqliteRow[];
+    return rows.reverse().flatMap(row => {
+      const files = this.db.prepare(`SELECT id,name,status,bytes,mime_type,error_code FROM user_files
+        WHERE owner_id=? AND message_id=? ORDER BY item_index`).all(ownerId, text(row, "channel_message_id"));
+      if (!files.length) return [];
+      const at = text(row, "queued_at");
+      return [{ id: `file_receipt:${text(row, "id")}`, kind: "file_receipt" as const, at,
+        content: JSON.stringify({ at, userAction: "uploaded_files", files: files.map(file => ({
+          fileId: file.id, name: file.name, status: file.status, bytes: file.bytes,
+          mimeType: file.mime_type, ...(file.error_code ? { errorCode: file.error_code } : {}),
+        })), applicationReply: text(row, "final_response") }) }];
     });
   }
 

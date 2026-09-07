@@ -1,3 +1,4 @@
+import type { ConversationContextEvent } from "../../domain/conversation/context-event.js";
 import type { fileSummary } from "../../domain/files/user-file.js";
 import type { AgentEvent } from "../../domain/execution/step.js";
 import type { ConversationSession } from "../../domain/conversation/session.js";
@@ -20,6 +21,7 @@ export interface AgentRunRequest {
   permissionContext?: PermissionContext;
   images?: readonly InboundImage[];
   files?: readonly ReturnType<typeof fileSummary>[];
+  contextEvents?: readonly ConversationContextEvent[];
   signal?: AbortSignal;
   onInvocation?: (trace: AgentInvocationTrace) => void;
   onSessionReady?: (piSessionId: string, piSessionFile?: string) => void;

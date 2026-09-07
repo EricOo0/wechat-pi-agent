@@ -1,3 +1,4 @@
+import { syncConversationContext } from "./conversation-context.js";
 import { redactFileErrors } from "./file-input/redact-file-errors.js";
 import type { UserFileRepository } from "../../../application/interfaces/user-file-repository.js";
 import type { FileStorage } from "../../../application/interfaces/file-storage.js";
@@ -132,6 +133,7 @@ export class PiAgentGateway implements Agent {
     request.signal?.addEventListener("abort", onAbort, { once: true });
     try {
       if (request.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      await syncConversationContext(handle.session, request.contextEvents ?? [], event => request.onEvent?.(event));
       const expanded = await tracker.expand(request.prompt);
       if (expanded.error) {
         const piSessionFile = handle.manager.getSessionFile();

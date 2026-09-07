@@ -11,7 +11,9 @@ import { PermissionService } from '../dist/application/services/permission-servi
 import { LocalSandboxExecutor } from '../dist/adapters/outbound/sandbox/local-sandbox-executor.js';
 import { PiAgentGateway } from '../dist/adapters/outbound/pi/pi-agent-gateway.js';
 import { principalId, subjectKey } from '../dist/domain/policy/permissions.js';
-import { fileSummary } from '../dist/domain/files/user-file.js';
+import { RunNextTurn } from '../dist/application/use-cases/run-next-turn.js';
+import { ReplyChunker } from '../dist/application/services/reply-chunker.js';
+import { DryRunChannel } from '../dist/adapters/outbound/ilink/dry-run-channel.js';
 if (!process.argv.includes('--live')) throw Error('Use --live to authorize a synthetic PDF upload and two model requests using the configured Codex account.');
 const settings=JSON.parse(await readFile('data/settings.json','utf8'));
 const root=await realpath(await mkdtemp('/tmp/file-gateway-live-'));
@@ -23,17 +25,29 @@ const stream=`BT /F1 18 Tf 40 100 Td (${marker}) Tj ET`;
 const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',`<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`];
 let pdf='%PDF-1.4\n';const offsets=[];objects.forEach((o,i)=>{offsets.push(Buffer.byteLength(pdf));pdf+=`${i+1} 0 obj\n${o}\nendobj\n`;});const xref=Buffer.byteLength(pdf);pdf+='xref\n0 6\n0000000000 65535 f \n'+offsets.map(x=>String(x).padStart(10,'0')+' 00000 n \n').join('')+`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
 const message={id:'probe',accountId:'probe',channelMessageId:'probe',peerId:'owner',senderId:'owner',text:'',receivedAt:new Date(),files:[{itemIndex:0,name:'gateway-verification.pdf'}]};
-const saved=await new SaveInboundFiles(repo,storage,{download:async()=>Buffer.from(pdf)}).execute(subjectKey(permissions.context(message,'one').subject),message,()=>{});
+const saveFiles=new SaveInboundFiles(repo,storage,{download:async()=>Buffer.from(pdf)});
+control.ingestBatch({accountId:'probe',previousCursor:'',nextCursor:'upload',messages:[message]});
 let gateway;const results=[];
 try {
  gateway=await PiAgentGateway.create({cwd:root,provider:settings.piProvider,modelId:settings.piModelId,thinkingLevel:'low',authPath:homedir()+'/.pi/agent/auth.json',modelsStorePath:homedir()+'/.pi/agent/models.json',sessionDir:root+'/sessions',systemPromptPath:process.cwd()+'/src/prompts/wechat-assistant.md',loadLocalSkills:false,toolSandboxRoot:root+'/workspace',permissions,executor,deniedPaths:[root+'/files'],protectedWritePaths:[],deniedNetworkPorts:[],files:{repository:repo,storage}});
+ const worker=new RunNextTurn(control,gateway,new DryRunChannel(),new ReplyChunker(),{ownerId:'live-test',leaseMs:180000},undefined,undefined,permissions,saveFiles);
+ const receipt=await worker.execute();
+ if(receipt.status!=='completed'||!receipt.finalResponse.includes('已保存'))throw Error('Upload receipt failed');
+ const savedFile=repo.list(subjectKey(permissions.context(message,'ignored').subject))[0];
+ let cursor='upload';
  for (const id of ['one','two']) {
-  const events=[];const request={session:{id,key:id,accountId:'probe',peerId:'owner',status:'ACTIVE',createdAt:new Date(),updatedAt:new Date()},prompt:id==='one'?'请使用 file_use 读取这次上传的 PDF，只返回页面中的英文标记，不要解释。':'请用 file_list 查询我的文件库，找到 gateway-verification.pdf，使用 file_use 读取，只返回文档中的英文标记。',permissionContext:permissions.context(message,id,'turn-'+id),signal:AbortSignal.timeout(120000),onEvent:e=>{if(e.type.startsWith('file_'))events.push(e);},...(id==='one'?{files:saved.files.map(fileSummary)}:{})};
-  const result=await gateway.runTurn(request);
-  const history=result.piSessionFile?await readFile(result.piSessionFile,'utf8'):'';
-  const summary={session:id,output:result.text,markerMatched:result.text.trim()===marker,fileEvents:events,historyHasSignedUrl:/file_url|oaiusercontent\.com|sig=/.test(history)};
+  if(id==='two')control.archiveActiveSession('probe','owner');
+  const question={id,accountId:'probe',channelMessageId:id,peerId:'owner',senderId:'owner',text:id==='one'?'帮我看一下刚才这个文档，只返回页面中的英文标记。':'请查询文件库里的 gateway-verification.pdf，只返回文档中的英文标记。',receivedAt:new Date()};
+  control.ingestBatch({accountId:'probe',previousCursor:cursor,nextCursor:id,messages:[question]});cursor=id;
+  const result=await worker.execute(AbortSignal.timeout(120000));
+  if(result.status!=='completed')throw Error('Model turn failed');
+  const detail=control.getTurnDetails(result.turnId);
+  const history=detail.session.piSessionFile?await readFile(detail.session.piSessionFile,'utf8'):'';
+  const summary={session:id,output:result.finalResponse,markerMatched:result.finalResponse.trim()===marker,
+   fileEvents:detail.steps.filter(e=>e.event_type.startsWith('file_')||e.event_type==='context_replay').map(e=>({type:e.event_type,data:e.eventData})),
+   replayedReceipt:history.includes('application_context')&&history.includes(savedFile.id),historyHasSignedUrl:/file_url|oaiusercontent\.com|sig=/.test(history)};
   results.push(summary);console.log(JSON.stringify(summary));
-  if(!summary.markerMatched||summary.historyHasSignedUrl)throw Error('Gateway verification failed');
+  if(!summary.markerMatched||summary.historyHasSignedUrl||(id==='one'&&!summary.replayedReceipt))throw Error('Gateway verification failed');
  }
  await writeFile('docs/designs/pdf-attachments/gateway-verification.json',JSON.stringify({testedAt:new Date().toISOString(),model:settings.piModelId,synthetic:true,results},null,2)+'\n');
 } finally { gateway?.dispose();executor.close();repo.close();control.close();permissionsRepo.close();await rm(root,{recursive:true,force:true}); }

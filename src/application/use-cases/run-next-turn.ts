@@ -87,6 +87,7 @@ export class RunNextTurn {
       }
       const result = await this.agent.runTurn({
         session,
+        ...(permissionContext === undefined ? {} : { contextEvents: this.controlPlane.getSessionContextEvents(turn.id, subjectKey(permissionContext.subject)) }),
         prompt: routed.text + (saved ? `\n\n文件保存结果：\n${saved.receipt}` : ""),
         ...(saved === undefined ? {} : { files: saved.files.map(fileSummary) }),
         ...(this.permissions === undefined ? {} : { permissionContext: this.permissions.context(message, session.id, turn.id) }),
