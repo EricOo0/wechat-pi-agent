@@ -1,0 +1,191 @@
+{
+  "doc_meta": {
+    "title": "模型、供应商与认证管理",
+    "owners": [],
+    "reviewers": []
+  },
+  "glossary": [
+    {
+      "term": "ModelSelection",
+      "definition": "完整的 providerId + modelId 原子选择"
+    },
+    {
+      "term": "TurnBinding",
+      "definition": "单轮固定的选择和认证版本"
+    }
+  ],
+  "requirement_summary": {
+    "background": "当前仅启动时绑定模型，用户需要在微信和本机管理页切换并管理认证",
+    "goals": [
+      "供应商发现",
+      "认证后选择模型",
+      "持久用户默认",
+      "帮助入口",
+      "重新认证"
+    ],
+    "non_goals": [
+      "未知命令自动纠错",
+      "自然语言自动切换",
+      "跨供应商自动fallback",
+      "多账户同时路由"
+    ],
+    "constraints": [
+      "未知语法原文交给 Agent",
+      "凭证本机管理",
+      "运行中任务不切换"
+    ],
+    "assumptions": [
+      "单所有者共享 Pi 凭证",
+      "微信管理命令沿用单 Turn 队列"
+    ],
+    "open_questions": [
+      "各认证方式的 staging 和失败恢复验收",
+      "跨协议历史兼容验证"
+    ]
+  },
+  "overall_design": {
+    "architecture_summary": "明确命令和 Admin 共用用例，Pi SDK 负责目录/认证/模型切换",
+    "key_decisions": [
+      {
+        "decision": "选择原子提交，Turn 开始绑定",
+        "rationale": "避免半轮换模型和不完整provider状态",
+        "alternatives": [
+          "立即修改运行中Session"
+        ],
+        "evidence_refs": [
+          "Pi setModel",
+          "RunNextTurn"
+        ]
+      },
+      {
+        "decision": "认证暂存并在provider空闲时提交",
+        "rationale": "失败保留旧账户，避免多轮调用串账户",
+        "alternatives": [
+          "先logout再login"
+        ],
+        "evidence_refs": [
+          "CredentialStore 注入接口"
+        ]
+      }
+    ],
+    "business_flow": "选择provider → 检查认证 → 显示模型 → 提交完整选择 → 下一轮setModel"
+  },
+  "detailed_design": {
+    "modules": [
+      {
+        "name": "command-catalog",
+        "responsibility": "命令语法、帮助和示例同源"
+      },
+      {
+        "name": "select-model",
+        "responsibility": "验证并原子保存用户模型选择"
+      },
+      {
+        "name": "pi-provider-authentication",
+        "responsibility": "暂存登录、凭证提交和runtime刷新"
+      },
+      {
+        "name": "provider-request-gate",
+        "responsibility": "认证替换时等待活动任务退出"
+      }
+    ],
+    "file_structure": "见 design.md 4.6"
+  },
+  "api_contracts": {
+    "interface_changes": [
+      "ModelCatalog",
+      "ModelSelectionRepository",
+      "ProviderAuthentication",
+      "TurnBinding",
+      "本机 models/auth API"
+    ],
+    "data_schema_changes": [
+      "user_model_settings",
+      "turn_model_bindings",
+      "provider_auth_operations",
+      "credential revision 与commit journal"
+    ]
+  },
+  "architecture_metrics": {
+    "security": {
+      "checks": [
+        "凭证不进入微信和Trace",
+        "本机写入口Origin/CSRF保护",
+        "单所有者认证管理"
+      ]
+    },
+    "reliability": {
+      "boundaries": [
+        "Turn模型固定",
+        "不承诺全体外部进程凭证隔离",
+        "外部调用错误不自动fallback"
+      ]
+    },
+    "compatibility": {
+      "items": [
+        "旧配置仅作默认",
+        "/skill及未知命令原文透传",
+        "历史不静默删除"
+      ]
+    },
+    "observability": {
+      "logs": [
+        "selection changed",
+        "auth operation",
+        "actual model_call"
+      ],
+      "metrics": [
+        "操作结果与耗时"
+      ]
+    }
+  },
+  "quality_plan": {
+    "rollout": {
+      "strategy": "先已有凭证模型切换，再认证管理",
+      "feature_flags": [
+        "MODEL_MANAGEMENT_ENABLED（拟新增）"
+      ]
+    },
+    "rollback": {
+      "strategy": "关闭新管理写入，保留现有选择和兼容schema版本"
+    },
+    "testing": {
+      "unit": [
+        "帮助匹配",
+        "无效语法透传",
+        "选择CAS"
+      ],
+      "integration": [
+        "setModel与文件/记忆一致",
+        "credential staging与恢复"
+      ],
+      "qa": [
+        "真实OAuth/API Key",
+        "管理页视觉验证"
+      ]
+    }
+  },
+  "errors_and_copy": [
+    {
+      "condition": "语法未匹配",
+      "behavior": "原文传Agent"
+    },
+    {
+      "condition": "认证失败",
+      "behavior": "明确反馈，保持旧账户"
+    }
+  ],
+  "references": [
+    "design.md 第10节"
+  ],
+  "task_breakdown": {
+    "milestones": [
+      "命令帮助",
+      "目录与存储",
+      "Turn绑定",
+      "本机认证",
+      "管理页与真实验收"
+    ],
+    "owners": []
+  }
+}

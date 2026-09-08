@@ -72,6 +72,10 @@ export function buildTraceSpans(events: TraceEvent[], turnStatus: string): Trace
       if (kind === "tool_execution_end") { span.end = at; span.output = data.result ?? null; span.status = data.isError === true ? "failed" : "succeeded"; }
       continue;
     }
+    if (kind === "model_management") {
+      const span = make(`management:${spans.length}`, "模型管理", "event", at);
+      span.end = at; span.status = data.status === "failed" ? "failed" : "succeeded"; span.input = data.command; span.output = data.response; span.events.push(event); continue;
+    }
     if (kind.startsWith("file_")) {
       const labels: Record<string,string> = { file_save: "保存文件", file_upload: "上传文件", file_selected: "选择文件", file_input: "附加文件输入", file_error: "文件处理失败" };
       const key = `${kind}:${typeof data.eventId === "string" ? data.eventId : typeof data.fileId === "string" ? data.fileId : String(event.ordinal)}`;

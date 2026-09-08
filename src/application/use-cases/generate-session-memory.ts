@@ -5,6 +5,12 @@ import type { MemoryJob } from "../../domain/memory/memory-job.js";
 export class GenerateSessionMemory {
   public constructor(private readonly jobs: MemoryJobRepository, private readonly store: MemoryStore, private readonly generator: MemoryGenerator) {}
   public async execute(job: MemoryJob, signal: AbortSignal): Promise<void> {
+    if (this.generator.withTask) {
+      let entered = false;
+      try { return await this.generator.withTask(job.ownerId, `memory:${job.id}`, signal,
+        generator => { entered = true; return new GenerateSessionMemory(this.jobs, this.store, generator).execute(job, signal); }); }
+      catch (error) { if (!entered) this.jobs.fail(job, "Memory model binding or authentication is unavailable"); throw error; }
+    }
     const emit = (event: Parameters<MemoryJobRepository['appendEvent']>[1]) => this.jobs.appendEvent(job.id,event);
     const marker = `<!-- consolidated:${job.id} -->`;
     try {

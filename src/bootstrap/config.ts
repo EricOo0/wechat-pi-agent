@@ -15,6 +15,7 @@ const schema = z.object({
   ADMIN_HOST: z.string().default("127.0.0.1"),
   ADMIN_PORT: z.coerce.number().int().min(1).max(65535).default(9464),
   LOG_LEVEL: z.string().default("info"),
+  MODEL_MANAGEMENT_ENABLED: booleanFromEnv.default(false),
   TRACE_RETENTION: z.coerce.number().int().min(1).max(10_000).default(100),
   SYSTEM_PROMPT_PATH: z.string().default("./src/prompts/wechat-assistant.md"),
   PI_PROVIDER: z.string().default("openai-codex"),
@@ -48,6 +49,7 @@ export interface AppConfig {
   settingsPath: string;
   piSessionDir: string;
   inboundMediaDir: string;
+  modelManagementEnabled: boolean;
   adminHost: string;
   adminPort: number;
   logLevel: string;
@@ -97,6 +99,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     settingsPath: resolve(dataDir, "settings.json"),
     piSessionDir: resolve(dataDir, "pi-sessions"),
     inboundMediaDir: resolve(dataDir, "inbound-media"),
+    modelManagementEnabled: value.MODEL_MANAGEMENT_ENABLED,
     adminHost: value.ADMIN_HOST,
     adminPort: value.ADMIN_PORT,
     logLevel: value.LOG_LEVEL,

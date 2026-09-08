@@ -1,3 +1,11 @@
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { ModelManagement } from "../application/use-cases/select-model.js";
+import { SqliteModelSelectionRepository } from "../adapters/outbound/sqlite/sqlite-model-selection-repository.js";
+import { PiModelCatalog } from "../adapters/outbound/pi/pi-model-catalog.js";
+import { PiProviderAuthentication } from "../adapters/outbound/pi/pi-provider-authentication.js";
+import { ProviderRequestGate } from "../adapters/outbound/pi/provider-request-gate.js";
+import { openPiCredentialStore } from "../adapters/outbound/pi/staged-credential-store.js";
+import { ModelRoutes } from "../adapters/inbound/admin-http/model-routes.js";
 import { MarkdownMemoryStore } from "../adapters/outbound/filesystem/markdown-memory-store.js";
 import { SqliteMemoryJobRepository } from "../adapters/outbound/sqlite/sqlite-memory-job-repository.js";
 import { PiMemoryGenerator } from "../adapters/outbound/pi/pi-memory-generator.js";
@@ -105,22 +113,35 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
         mediaDir: config.inboundMediaDir,
         onMediaError: (error) => logger.warn({ err: error }, "iLink image download failed"),
       });
+  const modelSelections = new SqliteModelSelectionRepository(config.databasePath);
+  const managementOwner = subjectKey({ principalId: principalId(accountId, allowedSender), executorId: resolvePermissionExecutorId(config), workspaceId: realpathSync(config.workspaceRoot) });
+  const storedSelection = modelSelections.get(managementOwner, { providerId: config.pi.provider, modelId: config.pi.modelId, revision: 0 });
   const piModelId = config.dryRun ? "" : await resolvePiModelId({
-    provider: config.pi.provider,
-    configuredModelId: config.pi.modelId,
+    provider: storedSelection.providerId,
+    configuredModelId: storedSelection.modelId,
     authPath: config.pi.authPath,
     modelsStorePath: config.pi.modelsStorePath,
     settingsPath: config.settingsPath,
     logger,
   });
+  const gate = new ProviderRequestGate();
+  const credentials = await openPiCredentialStore(config.pi.authPath);
+  const runtime = await ModelRuntime.create({ credentials, modelsStorePath: config.pi.modelsStorePath, allowModelNetwork: false, refreshOnCreate: false });
+  const authentication = new PiProviderAuthentication(runtime, credentials, modelSelections, gate);
+  await authentication.recover();
+  if (!config.dryRun) await runtime.refresh({ allowNetwork: false });
+  const models = new ModelManagement(new PiModelCatalog(runtime), modelSelections,
+    { providerId: storedSelection.providerId, modelId: piModelId, revision: 0 },
+    authentication, (type, data) => modelSelections.audit(type, data), provider => gate.activeCount(provider), managementOwner);
   const agent: Agent = config.dryRun
     ? new DryRunAgent()
     : await PiAgentGateway.create({
         logger,
+        runtime, models, gate, modelOwner: managementOwner,
         files: { repository: fileRepository, storage: fileStorage },
         memory,
         cwd: config.workspaceRoot,
-        provider: config.pi.provider,
+        provider: storedSelection.providerId,
         modelId: piModelId,
         thinkingLevel: config.pi.thinkingLevel,
         authPath: config.pi.authPath,
@@ -141,13 +162,13 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const ownerId = `worker_${randomUUID()}`;
   const endSession = new EndSession(control, permissions, id => liveGateway?.disposeSession(id), error => logger.warn({err:error}, "session permission cleanup deferred"));
   const expireSessions = new ExpireIdleSessions(control, endSession);
-  const runNextTurn = new RunNextTurn(control, agent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles, endSession);
+  const runNextTurn = new RunNextTurn(control, agent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles, endSession, config.modelManagementEnabled ? models : undefined);
   const deliverReply = new DeliverReply(control, channel, { ownerId, leaseMs: 60_000 }, undefined, telemetry);
   const recover = new RecoverInterruptedWork(control);
   const memoryGenerator = config.dryRun ? {
     extract: () => Promise.resolve({ content: "Dry-run session: no durable facts extracted.", shouldMerge: false }),
     merge: (overview: string) => Promise.resolve(overview),
-  } : await PiMemoryGenerator.create({ provider: config.pi.provider, modelId: piModelId, authPath: config.pi.authPath, modelsStorePath: config.pi.modelsStorePath });
+  } : await PiMemoryGenerator.create({ runtime, models, gate, provider: storedSelection.providerId, modelId: piModelId, authPath: config.pi.authPath, modelsStorePath: config.pi.modelsStorePath });
   const memoryLoop = new MemoryWorkerLoop(memoryJobs, new GenerateSessionMemory(memoryJobs, memoryStore, memoryGenerator), logger);
 
   const pollLoop = new PollLoop({ accountId, channel, control, ingest, health, telemetry, logger });
@@ -156,6 +177,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   health.beat("poll"); health.beat("turn"); health.beat("outbox");
 
   const admin = new AdminServer({
+    ...(config.modelManagementEnabled ? { modelRoutes: new ModelRoutes(models, authentication, managementOwner, () => modelSelections.events()) } : {}),
     host: config.adminHost,
     port: config.adminPort,
     control,
@@ -203,6 +225,8 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
       try { if (started && endSessions) endSession.all("shutdown"); }
       finally {
         await admin.close();
+        await authentication.close();
+        modelSelections.close();
         if (agent instanceof PiAgentGateway) agent.dispose();
         executor.close();
         memoryJobs.close();

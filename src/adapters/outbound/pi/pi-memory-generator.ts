@@ -1,3 +1,5 @@
+import type { ModelManagement } from "../../../application/use-cases/select-model.js";
+import type { ProviderRequestGate } from "./provider-request-gate.js";
 import { readFile } from "node:fs/promises";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { AgentEvent } from "../../../domain/execution/step.js";
@@ -7,11 +9,21 @@ import { traceModelCalls } from "./model-call-trace.js";
 import { traceSnapshot } from "./trace-snapshot.js";
 export class PiMemoryGenerator implements MemoryGenerator {
   private constructor(private readonly runtime: ModelRuntime, private readonly provider: string, private readonly modelId: string,
-    private readonly extractPrompt: string, private readonly mergePrompt: string) {}
-  public static async create(options:{provider:string;modelId:string;authPath:string;modelsStorePath:string}):Promise<PiMemoryGenerator>{
-    const runtime=await ModelRuntime.create({authPath:options.authPath,modelsStorePath:options.modelsStorePath,allowModelNetwork:false,refreshOnCreate:false});
+    private readonly extractPrompt: string, private readonly mergePrompt: string, private readonly models?: ModelManagement, private readonly gate?: ProviderRequestGate) {}
+  public static async create(options:{provider:string;modelId:string;authPath:string;modelsStorePath:string;runtime?:ModelRuntime;models?:ModelManagement;gate?:ProviderRequestGate}):Promise<PiMemoryGenerator>{
+    const runtime=options.runtime ?? await ModelRuntime.create({authPath:options.authPath,modelsStorePath:options.modelsStorePath,allowModelNetwork:false,refreshOnCreate:false});
     const [extract,merge]=await Promise.all([readFile(new URL('../../../prompts/memory-extract.md',import.meta.url),'utf8'),readFile(new URL('../../../prompts/memory-merge.md',import.meta.url),'utf8')]);
-    return new PiMemoryGenerator(runtime,options.provider,options.modelId,extract,merge);
+    return new PiMemoryGenerator(runtime,options.provider,options.modelId,extract,merge,options.models,options.gate);
+  }
+  public async withTask<T>(owner: string, id: string, signal: AbortSignal, action: (generator: MemoryGenerator) => Promise<T>): Promise<T> {
+    const selection = this.models ? this.models.repository.findBinding(id, owner) ?? this.models.current(owner) : undefined;
+    const provider = selection?.providerId ?? this.provider;
+    const release = await this.gate?.enter(provider, signal);
+    try {
+      const binding = selection ? this.models?.repository.bind(id, owner, selection) : undefined;
+      const bound = new PiMemoryGenerator(this.runtime, provider, binding?.modelId ?? this.modelId, this.extractPrompt, this.mergePrompt);
+      return await action({ extract: bound.extract.bind(bound), merge: bound.merge.bind(bound) });
+    } finally { release?.(); }
   }
   public async extract(source:SessionMemorySource,emit:(event:AgentEvent)=>void,signal:AbortSignal):Promise<ExtractedMemory>{
     const bounded={...source,turns:[...source.turns]};

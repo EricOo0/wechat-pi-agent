@@ -117,4 +117,23 @@ describe("RunNextTurn", () => {
     expect(archiveActiveSession).toHaveBeenCalledWith("account-1", "peer-1");
     expect(completeTurn).toHaveBeenCalledWith(expect.objectContaining({ turnId: "turn-1" }));
   });
+  it("does not send recognized management commands to the model when the feature is disabled", async () => {
+    const claim = claimedTurn(); claim.message.text = "/provider";
+    const runTurn = vi.fn(() => Promise.resolve({ text: "should not run" }));
+    const agent: Agent = { recordContext: () => Promise.resolve(), checkReady: () => Promise.resolve({ ready: true }), runTurn };
+    const useCase = new RunNextTurn(controlPlane({ claimNextTurn: () => claim }), agent, channel(), new ReplyChunker(), { ownerId: "worker" });
+    const result = await useCase.execute();
+    expect(result).toMatchObject({ status: "completed", finalResponse: expect.stringContaining("MODEL_MANAGEMENT_ENABLED=true") as string });
+    expect(runTurn).not.toHaveBeenCalled();
+  });
+
+  it("passes unmatched command syntax through unchanged", async () => {
+    const claim = claimedTurn(); claim.message.text = "/model this is an explanation";
+    const runTurn = vi.fn(() => Promise.resolve({ text: "understood" }));
+    const agent: Agent = { recordContext: () => Promise.resolve(), checkReady: () => Promise.resolve({ ready: true }), runTurn };
+    const useCase = new RunNextTurn(controlPlane({ claimNextTurn: () => claim }), agent, channel(), new ReplyChunker(), { ownerId: "worker" });
+    await useCase.execute();
+    expect(runTurn).toHaveBeenCalledWith(expect.objectContaining({ prompt: claim.message.text }));
+  });
+
 });

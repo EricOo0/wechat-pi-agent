@@ -1,3 +1,6 @@
+import { ModelManagementError } from "../../../domain/models/model-selection.js";
+import type { ModelManagement } from "../../../application/use-cases/select-model.js";
+import type { ProviderRequestGate } from "./provider-request-gate.js";
 import type { UserMemoryService } from "../../../application/services/user-memory-service.js";
 import { createMemoryTools } from "./tools/memory-tools.js";
 import { pinUserMemory } from "./user-memory-context.js";
@@ -29,6 +32,10 @@ import { PolicyCompiler } from "../../../application/services/policy-compiler.js
 import type { SandboxExecutor } from "../../../application/interfaces/sandbox-executor.js";
 
 export interface PiAgentGatewayOptions {
+  runtime?: ModelRuntime;
+  models?: ModelManagement;
+  modelOwner?: string;
+  gate?: ProviderRequestGate;
   logger?: Pick<Logger, "info" | "warn">;
   memory?: UserMemoryService;
   files?: { repository: UserFileRepository; storage: FileStorage };
@@ -73,7 +80,7 @@ export class PiAgentGateway implements Agent {
   public static async create(options: PiAgentGatewayOptions): Promise<PiAgentGateway> {
     await mkdir(options.sessionDir, { recursive: true });
     const [runtime, systemPrompt] = await Promise.all([
-      ModelRuntime.create({
+      options.runtime ?? ModelRuntime.create({
         ...(options.authPath === undefined ? {} : { authPath: options.authPath }),
         ...(options.modelsPath === undefined ? {} : { modelsPath: options.modelsPath }),
         ...(options.modelsStorePath === undefined ? {} : { modelsStorePath: options.modelsStorePath }),
@@ -124,15 +131,35 @@ export class PiAgentGateway implements Agent {
   }
 
   public async runTurn(request: AgentRunRequest): Promise<AgentRunResult> {
+    const owner = request.permissionContext ? subjectKey(request.permissionContext.subject) : undefined;
+    const models = this.options.models;
+    const bindingId = request.permissionContext?.taskTurnId ?? request.permissionContext?.sourceMessageId;
+    const selection = models && owner && bindingId
+      ? models.repository.findBinding(bindingId, owner) ?? models.current(owner) : request.modelBinding;
+    const release = await this.options.gate?.enter(selection?.providerId ?? this.options.provider, request.signal);
+    try {
+      const binding = selection && models && owner && bindingId ? models.repository.bind(bindingId, owner, selection) : request.modelBinding;
+      return await this.runBoundTurn({ ...request, ...(binding ? { modelBinding: binding } : {}) });
+    } finally { release?.(); }
+  }
+
+  private async runBoundTurn(request: AgentRunRequest): Promise<AgentRunResult> {
     const handle = await this.getOrCreateSession(request);
+    const choice = request.modelBinding;
+    if (choice && (handle.session.model?.provider !== choice.providerId || handle.session.model?.id !== choice.modelId)) {
+      const target = this.runtime.getModel(choice.providerId, choice.modelId);
+      if (!target) throw new ModelManagementError("MODEL_UNAVAILABLE", "所选模型已不可用，请重新选择模型。");
+      try { await handle.session.setModel(target, { persist: false }); }
+      catch { throw new ModelManagementError("MODEL_AUTH_FAILED", "目标模型认证检查失败，请在本机检查登录；本轮未切换模型。"); }
+    }
     handle.request = request;
     handle.selectedFiles.clear();
     request.onSessionReady?.(handle.manager.getSessionId(), handle.manager.getSessionFile());
     const permission = this.options.permissions.snapshot(handle.context);
     request.onInvocation?.({
       systemPrompt: handle.session.systemPrompt,
-      provider: this.options.provider,
-      modelId: this.options.modelId,
+      provider: handle.session.model?.provider ?? this.options.provider,
+      modelId: handle.session.model?.id ?? this.options.modelId,
       skills: this.resourceLoader.getSkills().skills.map((skill) => ({
         ...skillIdentity(skill),
         description: skill.description,
@@ -158,12 +185,13 @@ export class PiAgentGateway implements Agent {
       }
       const images = await this.loadImages(request.images ?? []);
       if (images.length > 0 && !handle.session.model?.input.includes("image")) {
-        throw new Error(`Pi model does not support image input: ${this.options.provider}/${this.options.modelId}`);
+        throw new Error(`Pi model does not support image input: ${handle.session.model?.provider}/${handle.session.model?.id}`);
       }
       await handle.session.prompt(expanded.prompt + (request.files?.length ? `\n\nUser file library additions (metadata only; call file_use to read originals): ${JSON.stringify(request.files)}` : ""), { expandPromptTemplates: false, ...(images.length === 0 ? {} : { images }) });
       const latest = handle.session.agent.state.messages.at(-1);
-      if (handle.selectedFiles.size && latest?.role === "assistant" && (latest.stopReason === "error" || latest.stopReason === "aborted")) {
-        throw new FileInputError("FILE_MODEL_FAILED", "文件分析未完成，模型接口返回错误；原文件已保存，可以稍后重试。");
+      if (latest?.role === "assistant" && (latest.stopReason === "error" || latest.stopReason === "aborted")) {
+        if (handle.selectedFiles.size) throw new FileInputError("FILE_MODEL_FAILED", "文件分析未完成，模型接口返回错误；原文件已保存，可以稍后重试。");
+        throw new ModelManagementError("MODEL_CALL_FAILED", "模型调用未完成，请检查该供应商的认证、模型访问权限或稍后重试。系统没有自动切换供应商。");
       }
       if (this.options.permissions.snapshot(handle.context).revision !== permission.revision) throw new Error("Permissions changed; turn cancelled");
       const text = handle.session.getLastAssistantText()?.trim();
@@ -189,10 +217,12 @@ export class PiAgentGateway implements Agent {
   }
 
   public async checkReady(): Promise<{ ready: boolean; reason?: string }> {
-    const model = this.runtime.getModel(this.options.provider, this.options.modelId);
+    const selected = this.options.models && this.options.modelOwner ? this.options.models.current(this.options.modelOwner) : undefined;
+    const provider = selected?.providerId ?? this.options.provider;
+    const model = this.runtime.getModel(provider, selected?.modelId ?? this.options.modelId);
     if (!model) return { ready: false, reason: "pi_model_not_found" };
     try {
-      const auth = await this.runtime.checkAuth(this.options.provider);
+      const auth = await this.runtime.checkAuth(provider);
       return auth === undefined
         ? { ready: false, reason: "pi_auth_missing" }
         : { ready: true };
@@ -225,8 +255,8 @@ export class PiAgentGateway implements Agent {
     const manager = request.session.piSessionFile
       ? SessionManager.open(request.session.piSessionFile, this.options.sessionDir, this.options.cwd)
       : SessionManager.create(this.options.cwd, this.options.sessionDir);
-    const model = this.runtime.getModel(this.options.provider, this.options.modelId);
-    if (!model) throw new Error(`Pi model not found: ${this.options.provider}/${this.options.modelId}`);
+    const model = this.runtime.getModel(request.modelBinding?.providerId ?? this.options.provider, request.modelBinding?.modelId ?? this.options.modelId);
+    if (!model) throw new ModelManagementError("MODEL_UNAVAILABLE", "所选模型已不可用，请重新选择模型。");
     const initialContext = request.permissionContext;
     const selectedFiles = new Set<string>();
     const customTools: ReturnType<typeof createAgentTools> = createAgentTools({
@@ -238,7 +268,7 @@ export class PiAgentGateway implements Agent {
       customTools.push(...createFileTools(this.options.files.repository,
         () => subjectKey(this.sessions.get(request.session.id)?.context.subject ?? initialContext.subject),
         (id, toolCallId) => {
-          router.assertSupported(model);
+          router.assertSupported(session.model ?? model);
           if (!selectedFiles.has(id) && selectedFiles.size >= MAX_FILES_PER_MESSAGE) throw new FileInputError("FILE_COUNT_LIMIT", "每轮最多分析 3 个文件，请分开提问。");
           selectedFiles.add(id);
           this.sessions.get(request.session.id)?.request?.onEvent?.({ type: "file_selected", at: new Date(), data: { fileId: id, toolCallId, status: "succeeded" } });

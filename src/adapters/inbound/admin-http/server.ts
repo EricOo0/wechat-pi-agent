@@ -1,3 +1,4 @@
+import type { ModelRoutes } from "./model-routes.js";
 import type { MemoryJobRepository } from "../../../application/interfaces/memory-job-repository.js";
 import { memoryJobTrace, memoryJobDetails } from "./memory-trace.js";
 import { createServer, type Server, type ServerResponse } from "node:http";
@@ -11,6 +12,7 @@ import { buildTraceSpans, type TraceEvent } from "./trace-model.js";
 import { TRACE_PAGE_HTML } from "./trace-page.js";
 
 export interface AdminServerOptions {
+  modelRoutes?: ModelRoutes;
   memoryJobs?: MemoryJobRepository;
   host: string;
   port: number;
@@ -28,7 +30,7 @@ export class AdminServer {
 
   public constructor(private readonly options: AdminServerOptions) {
     this.server = createServer((request, response) => {
-      void this.handle(request.url ?? "/", response).catch((error: unknown) => {
+      void (async () => { if (await this.options.modelRoutes?.handle(request, response)) return; await this.handle(request.url ?? "/", response); })().catch((error: unknown) => {
         this.options.logger.error({ err: error }, "admin request failed");
         this.json(response, 500, { error: "internal_error" });
       });
@@ -68,7 +70,7 @@ export class AdminServer {
         "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'",
         "X-Content-Type-Options": "nosniff",
       });
-      response.end(TRACE_PAGE_HTML);
+      response.end(this.options.modelRoutes ? TRACE_PAGE_HTML : TRACE_PAGE_HTML.replace('<a href="/admin/models" style="color:inherit;margin-right:16px">模型与账户</a>', ""));
       return;
     }
     if (url.pathname === "/healthz") {

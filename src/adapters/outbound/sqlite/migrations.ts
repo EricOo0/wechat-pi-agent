@@ -195,4 +195,12 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
         PRIMARY KEY(job_id,ordinal)
       ) STRICT;`,
   },
+  {
+    version: 8,
+    sql: `CREATE TABLE user_model_settings(owner_id TEXT PRIMARY KEY,provider_id TEXT NOT NULL,model_id TEXT NOT NULL,revision INTEGER NOT NULL,updated_at TEXT NOT NULL) STRICT;
+      CREATE TABLE turn_model_bindings(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,provider_id TEXT NOT NULL,model_id TEXT NOT NULL,selection_revision INTEGER NOT NULL,credential_revision INTEGER NOT NULL) STRICT;
+      CREATE TABLE provider_credential_revisions(provider_id TEXT PRIMARY KEY,revision INTEGER NOT NULL) STRICT;
+      CREATE TABLE provider_auth_operations(id TEXT PRIMARY KEY,provider_id TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,error TEXT,candidate_hash TEXT) STRICT;
+      CREATE TABLE model_management_events(id INTEGER PRIMARY KEY,event_type TEXT NOT NULL,event_at TEXT NOT NULL,event_data TEXT NOT NULL) STRICT;`,
+  },
 ];

@@ -1,0 +1,22 @@
+{
+  "status": "draft_for_review",
+  "review_type": "self_review",
+  "score": 87,
+  "categories": {
+    "completeness": 29,
+    "evidence": 25,
+    "consistency": 18,
+    "executability": 15
+  },
+  "blockers": [],
+  "warnings": [
+    "不同provider暂存登录尚未验证",
+    "跨进程凭证修改不能由本进程gate完全约束",
+    "跨协议历史与文件上下文需要集成验证"
+  ],
+  "implementation_gates": [
+    "credential staging与故障恢复测试",
+    "文件及记忆模型绑定验证",
+    "本机写入口安全验证"
+  ]
+}

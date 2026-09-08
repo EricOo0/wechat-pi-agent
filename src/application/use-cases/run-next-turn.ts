@@ -1,3 +1,6 @@
+import { ModelManagementError } from "../../domain/models/model-selection.js";
+import { commandHelp } from "../services/command-catalog.js";
+import type { ModelManagement } from "./select-model.js";
 import type { EndSession } from "./end-session.js";
 import type { SaveInboundFiles } from "./save-inbound-files.js";
 import { subjectKey } from "../../domain/policy/permissions.js";
@@ -34,6 +37,7 @@ export class RunNextTurn {
     private readonly permissions?: PermissionService,
     private readonly saveFiles?: SaveInboundFiles,
     private readonly endSession?: EndSession,
+    private readonly modelManagement?: ModelManagement,
   ) {
     this.leaseMs = options.leaseMs ?? 60_000;
   }
@@ -61,8 +65,25 @@ export class RunNextTurn {
         ...(continuation === undefined ? {} : { continuation }) });
       return { status: "completed", turnId: turn.id, finalResponse: permissionReply, chunks };
     }
-    const routed = this.commandRouter.route(message.text);
-    if (routed.type !== "message") {
+    const parsedCommand = this.commandRouter.route(message.text);
+    const routed = parsedCommand.type === "management" && (message.files?.length || message.images?.length)
+      ? { type: "message" as const, text: message.text } : parsedCommand;
+    if (routed.type === "management" && this.modelManagement) {
+      const owner = this.permissions ? subjectKey(this.permissions.context(message, session.id, turn.id).subject) : message.senderId;
+      const finalResponse = await this.modelManagement.execute(owner, routed.command);
+      this.controlPlane.appendAgentEvent(turn.id, { type: "model_management", at: new Date(), data: { command: routed.command.type, response: finalResponse, status: "completed" } });
+      const chunks = this.replyChunker.chunk(finalResponse);
+      this.controlPlane.completeTurn({ turnId: turn.id, finalResponse, chunks });
+      return { status: "completed", turnId: turn.id, finalResponse, chunks };
+    }
+    if (routed.type === "management") {
+      const finalResponse = routed.command.type === "help" ? commandHelp(routed.command.name)
+        : "模型管理功能尚未开启，请在运行 Agent 的电脑设置 MODEL_MANAGEMENT_ENABLED=true 并重启服务。";
+      const chunks = this.replyChunker.chunk(finalResponse);
+      this.controlPlane.completeTurn({ turnId: turn.id, finalResponse, chunks });
+      return { status: "completed", turnId: turn.id, finalResponse, chunks };
+    }
+    if (routed.type === "new" || routed.type === "status") {
       const finalResponse = routed.type === "new"
         ? "已归档当前会话，下一条消息将创建新的上下文。"
         : `状态正常。session=${session.id} turn=${turn.id}`;
@@ -133,6 +154,12 @@ export class RunNextTurn {
       return { status: "completed", turnId: turn.id, finalResponse: result.text, chunks };
     } catch (cause: unknown) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
+      if (error instanceof ModelManagementError) {
+        this.controlPlane.appendAgentEvent(turn.id, { type: "model_management", at: new Date(), data: { status: "failed", code: error.code, response: error.message } });
+        const chunks = this.replyChunker.chunk(error.message);
+        this.controlPlane.completeTurn({ turnId: turn.id, finalResponse: error.message, chunks });
+        return { status: "completed", turnId: turn.id, finalResponse: error.message, chunks };
+      }
       if (error instanceof FileInputError) {
         this.controlPlane.appendAgentEvent(turn.id, { type: "file_error", at: new Date(), data: { status: "failed", errorCode: error.code, message: error.message } });
         const chunks = this.replyChunker.chunk(error.message);

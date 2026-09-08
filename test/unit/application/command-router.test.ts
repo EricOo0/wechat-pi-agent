@@ -11,6 +11,6 @@ describe("CommandRouter", () => {
 
   it("does not consume arguments or unknown commands", () => {
     expect(router.route("/new later")).toEqual({ type: "message", text: "/new later" });
-    expect(router.route("/help")).toEqual({ type: "message", text: "/help" });
+    expect(router.route("/unknown")).toEqual({ type: "message", text: "/unknown" });
   });
 });

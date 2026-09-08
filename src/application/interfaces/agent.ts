@@ -1,3 +1,4 @@
+import type { TurnModelBinding } from "../../domain/models/model-selection.js";
 import type { ConversationContextEvent } from "../../domain/conversation/context-event.js";
 import type { fileSummary } from "../../domain/files/user-file.js";
 import type { AgentEvent } from "../../domain/execution/step.js";
@@ -16,6 +17,7 @@ export interface AgentInvocationTrace {
 }
 
 export interface AgentRunRequest {
+  modelBinding?: TurnModelBinding;
   session: ConversationSession;
   prompt: string;
   permissionContext?: PermissionContext;
