@@ -21,9 +21,9 @@
 
 ### 技术模块与职责
 
-![技术架构与主要数据流](docs/architecture/layered-architecture-v3.svg)
+![WeChat × Pi Agent 当前系统架构](docs/architecture/current-system-2026-09-09.png)
 
-[PNG 预览](docs/architecture/layered-architecture-v3.png)。SVG 为可编辑版本；实线表示主要业务流，虚线表示调用、依赖或查询，跨线拱桥表示不相连。核心能力使用领域模型与规则，应用与能力通过侧边访问线读写基础设施。
+[查看原图](docs/architecture/current-system-2026-09-09.png) · [架构说明与源码依据](docs/architecture/current-system-2026-09-09.md) · [制图提示词](docs/architecture/current-system-2026-09-09.prompt.txt)。图基于 2026-09-09 本地源码，涵盖消息主链路、Agent 运行时、模型与认证、工具沙箱、文件、记忆和持久化；实线表示业务流与调用，虚线表示配置、查询与存储依赖。
 
 应用以单实例 Node.js / TypeScript 服务运行。Bootstrap 是启动与组装入口：加载配置和认证、创建组件并注入依赖、启动管理接口和后台循环、协调退出收尾。它不属于消息接入模块，也不参与逐条消息处理。浏览器打开 `/admin` 即管理页，主要用于旁路查询 Trace 与运行状态。
 
@@ -35,6 +35,7 @@
 | 会话与记忆 | `EndSession`、闲置扫描与记忆 worker：归档、提炼、合并、搜索和读取 | `Session / UserMemory / MemoryJob`；Markdown 正文与任务状态 |
 | 权限与工具 | 授权确认、策略编译、受控执行 | 授权、申请、权限主体与审计 |
 | 用户文件 | 保存、查询、选用和模型附件转换 | `UserFile` 与模型文件引用 |
+| 模型与认证 | 微信命令 / Admin → `ModelManagement`；Provider 认证、模型选择与请求协调 | 按可信 `subjectKey` 保存选择；`TurnBinding` 固定本轮模型 |
 
 这是现有代码的职责视图；模块共享持久化适配器。Adapter 是项目实现的边界封装：iLink 使用原生 `fetch`，Admin 使用 `node:http`，存储使用 `node:sqlite` / `node:fs`；`PiAgentGateway` 封装 Pi SDK。
 
@@ -42,11 +43,9 @@
 
 权限校验位于应用服务层，OS 沙箱位于工具执行适配器：`PermissionService → PolicyCompiler → LocalSandboxExecutor`。工具子进程通过 `@anthropic-ai/sandbox-runtime` 使用 Seatbelt / bubblewrap；微信收发和模型请求在主服务控制面。记忆使用双层 Markdown 正文与 SQLite 后台任务状态，生成和读取是独立路径。
 
-[技术图说明](docs/architecture/layered-architecture-v3.md)
+模型管理入口受 `MODEL_MANAGEMENT_ENABLED` 控制。认证后列出对应 Provider 的模型，`ProviderRequestGate` 协调模型调用与认证操作。外部模型服务通过主进程请求访问。
 
 ### 消息与能力流程
-
-![当前系统架构](docs/architecture/system-architecture.png)
 
 消息主链：
 
@@ -62,7 +61,7 @@
 - 普通文件/命令/网络工具走 `PermissionService → PolicyCompiler → LocalSandboxExecutor`。
 - 用户文件与记忆通过专用工具访问；图片、文件传输、模型调用和微信收发由控制面处理，不需要开启 Bash 或普通工具网络权限。
 
-架构图是概览；精确行为以以下说明和代码为准。[制图提示词与范围](docs/architecture/diagram-prompt.md)
+架构图表示当前代码结构；精确行为以以下说明和代码为准，不代表真实账号或运行环境验收结论。
 
 ## 快速开始
 
