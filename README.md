@@ -2,6 +2,8 @@
 
 通过微信 iLink 使用的个人 AI 助手。基于 Node.js / TypeScript，使用 Pi SDK 驱动 Agent，支持文字、图片、PDF、用户文件库、用户记忆和受控工具执行。
 
+开发维护从 [AGENTS.md](AGENTS.md) 和 [文档地图](docs/README.md) 开始；[业务需求](docs/specs/README.md) 定义目标与验收，[变更与计划](docs/changelog/README.md) 记录进度。下一步方向为 [Agent Harness](docs/specs/agent-harness/requirements.md)，首期范围待澄清。
+
 ## 当前能力
 
 | 能力 | 实现范围 |
