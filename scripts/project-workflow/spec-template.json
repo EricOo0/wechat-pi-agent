@@ -1,0 +1,18 @@
+{
+  "id": "F-002",
+  "title": "示例：文件删除",
+  "kind": "patch",
+  "maturity": "experimental",
+  "status": "draft",
+  "lifecycle": "planned",
+  "affects": [
+    {
+      "id": "F-001",
+      "sections": [
+        "F-001-2"
+      ]
+    }
+  ],
+  "changes": [],
+  "effective": null
+}

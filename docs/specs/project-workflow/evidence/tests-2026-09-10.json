@@ -1,0 +1,11 @@
+{
+  "command": "python3 -m unittest discover -s test/project-workflow -v",
+  "exit_code": 0,
+  "recorded_at": "2026-09-10T04:42:16.528902+00:00",
+  "sha256": {
+    "scripts/project-workflow/workflow.py": "b9c1ff38eb5a8fca230d47daa4d2d5ffc5a6a8dd4f86651ef9d84e0d2cd8c0ea",
+    "test/project-workflow/test_workflow.py": "6ee47e1b27e07cd397ea200420e834f923e01334b763fb92c4d862e7c33f9233",
+    "scripts/project-workflow/spec-review.schema.json": "32b614fe1ad134672d216315f9a2862edafec33bbda36bab37781159e3fb2920",
+    ".agents/skills/project-spec-review/SKILL.md": "98da7e44b5d5aef32baacfebc8555fffad5e98b7c7b0557dca987aa3ac17dc0b"
+  }
+}

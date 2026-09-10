@@ -1,6 +1,20 @@
+---
+{
+  "id": "H-001",
+  "title": "Agent Harness",
+  "kind": "feature",
+  "maturity": "experimental",
+  "status": "draft",
+  "lifecycle": "planned",
+  "affects": [],
+  "changes": [],
+  "effective": null
+}
+---
+
 # H-001：Agent Harness
 
-本文为需求草案。用户已确认 Harness 是下一步方向；候选条目不等于首期范围已全部批准。[开发状态与下一动作](../../changelog/planned.md#h-001-agent-harness)
+本文为需求草案。用户已确认先完成系统架构重构，再扩展 Harness；候选条目不等于首期范围已全部批准。[开发状态与下一动作](../../changelog/planned.md#h-001-agent-harness)
 
 ## 问题与目标
 

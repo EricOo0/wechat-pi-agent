@@ -1,0 +1,83 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "stage",
+    "scope_reason",
+    "specs",
+    "blockers"
+  ],
+  "properties": {
+    "stage": {
+      "type": "string",
+      "enum": [
+        "incremental",
+        "completion",
+        "not_applicable"
+      ]
+    },
+    "scope_reason": {
+      "type": "string"
+    },
+    "specs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "findings"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "requirement",
+                "status",
+                "code",
+                "verification",
+                "reason"
+              ],
+              "properties": {
+                "requirement": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "verification": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "conforms",
+                    "missing",
+                    "deviates",
+                    "unverified",
+                    "not_applicable"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

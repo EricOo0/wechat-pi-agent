@@ -13,7 +13,7 @@ Orchestrator 内增加 Goal Controller：保存目标版本、用户约束和里
 - 恢复时核对外部副作用，不盲目重放工具调用；等待外部条件时挂起并按事件或受控检查唤醒。
 - 用户可查看进度、证据与阻塞原因，修改目标、暂停、恢复或取消；长程执行不扩大授权范围。
 
-[SVG 源图](architecture.svg) · [PNG 预览](architecture.png) · [SVG 生成脚本](render_architecture.py)。脚本仅生成 SVG；调整源图后须重新导出 PNG 并检查两者一致。
+[SVG 源图](assets/architecture.svg) · [PNG 预览](assets/architecture.png) · [SVG 生成脚本](assets/render_architecture.py)。脚本仅生成 SVG；调整源图后须重新导出 PNG 并检查两者一致。
 
 边界：消息交互拥有渠道身份、接收去重、会话映射、输入附件和可靠投递；Orchestrator 拥有 Session 生命周期、输入路由、并发额度和运行控制；Runtime 维护 Agent Loop。上下文、Skills、记忆、文件产物、工具权限、执行环境和验证通过能力接口组合。
 

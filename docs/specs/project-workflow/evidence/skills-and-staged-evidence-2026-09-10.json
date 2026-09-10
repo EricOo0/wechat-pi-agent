@@ -1,0 +1,52 @@
+{
+  "recorded_at": "2026-09-10T04:38:44.427602+00:00",
+  "skills": [
+    {
+      "skill": "project-change-sync",
+      "exit_code": 0,
+      "output": "Skill is valid!",
+      "implicit_invocation": true,
+      "staged_file_sha256": {
+        ".agents/skills/project-change-sync/SKILL.md": "12ddf014845f97e65e606bc626a260ab642bbc505aa07dab38cfac5af9a5faab",
+        ".agents/skills/project-change-sync/agents/openai.yaml": "8619a54e8c098122a7f3881394f84ca89b684366e848233a29ad18b6ec363935"
+      }
+    },
+    {
+      "skill": "project-learning-sync",
+      "exit_code": 0,
+      "output": "Skill is valid!",
+      "implicit_invocation": true,
+      "staged_file_sha256": {
+        ".agents/skills/project-learning-sync/SKILL.md": "fbd1fe75904c971e24c13071879cd94bc4d7c744ebee1308a078afe893f94b67",
+        ".agents/skills/project-learning-sync/agents/openai.yaml": "8619a54e8c098122a7f3881394f84ca89b684366e848233a29ad18b6ec363935"
+      }
+    },
+    {
+      "skill": "project-spec",
+      "exit_code": 0,
+      "output": "Skill is valid!",
+      "implicit_invocation": false,
+      "staged_file_sha256": {
+        ".agents/skills/project-spec/SKILL.md": "8bd4ba69bac71b57c4d0d98fedcebd59086a9b7dc6895147f373f5a8e3e59574",
+        ".agents/skills/project-spec/agents/openai.yaml": "a1499d95abd8447558c535fe5554adcc3c9b988a0a39264a6283d430effe1e94"
+      }
+    },
+    {
+      "skill": "project-spec-review",
+      "exit_code": 0,
+      "output": "Skill is valid!",
+      "implicit_invocation": true,
+      "staged_file_sha256": {
+        ".agents/skills/project-spec-review/SKILL.md": "98da7e44b5d5aef32baacfebc8555fffad5e98b7c7b0557dca987aa3ac17dc0b",
+        ".agents/skills/project-spec-review/agents/openai.yaml": "8619a54e8c098122a7f3881394f84ca89b684366e848233a29ad18b6ec363935"
+      }
+    }
+  ],
+  "test_evidence_matches_current_index": {
+    "scripts/project-workflow/workflow.py": true,
+    "test/project-workflow/test_workflow.py": true,
+    "scripts/project-workflow/spec-review.schema.json": true,
+    ".agents/skills/project-spec-review/SKILL.md": true
+  },
+  "staged_comparison_at": "2026-09-10T04:42:33.584113+00:00"
+}

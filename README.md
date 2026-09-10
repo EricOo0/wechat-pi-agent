@@ -2,7 +2,7 @@
 
 通过微信 iLink 使用的个人 AI 助手。基于 Node.js / TypeScript，使用 Pi SDK 驱动 Agent，支持文字、图片、PDF、用户文件库、用户记忆和受控工具执行。
 
-开发维护从 [AGENTS.md](AGENTS.md) 和 [文档地图](docs/README.md) 开始；[业务需求](docs/specs/README.md) 定义目标与验收，[变更与计划](docs/changelog/README.md) 记录进度。下一步方向为 [Agent Harness](docs/specs/agent-harness/requirements.md)，首期范围待澄清。
+开发维护从 [AGENTS.md](AGENTS.md) 和 [文档地图](docs/README.md) 开始；[业务需求](docs/specs/README.md) 定义目标与验收，[变更与计划](docs/changelog/README.md) 记录进度。当前先评审并推进[系统架构重构](docs/specs/system-refactor/spec.md)，完成后再扩展 [Agent Harness](docs/specs/agent-harness/requirements.md)。
 
 ## 当前能力
 
@@ -23,9 +23,9 @@
 
 ### 技术模块与职责
 
-![WeChat × Pi Agent 当前系统架构](docs/architecture/current-system-2026-09-09.png)
+![WeChat × Pi Agent 当前系统架构](docs/architecture/current/2026-09-09/assets/current-system-2026-09-09.png)
 
-[查看原图](docs/architecture/current-system-2026-09-09.png) · [架构说明与源码依据](docs/architecture/current-system-2026-09-09.md) · [制图提示词](docs/architecture/current-system-2026-09-09.prompt.txt)。图基于 2026-09-09 本地源码，涵盖消息主链路、Agent 运行时、模型与认证、工具沙箱、文件、记忆和持久化；实线表示业务流与调用，虚线表示配置、查询与存储依赖。
+[查看原图](docs/architecture/current/2026-09-09/assets/current-system-2026-09-09.png) · [架构说明与源码依据](docs/architecture/current/2026-09-09/current-system-2026-09-09.md) · [制图提示词](docs/architecture/current/2026-09-09/assets/current-system-2026-09-09.prompt.txt)。图基于 2026-09-09 本地源码，涵盖消息主链路、Agent 运行时、模型与认证、工具沙箱、文件、记忆和持久化；实线表示业务流与调用，虚线表示配置、查询与存储依赖。
 
 应用以单实例 Node.js / TypeScript 服务运行。Bootstrap 是启动与组装入口：加载配置和认证、创建组件并注入依赖、启动管理接口和后台循环、协调退出收尾。它不属于消息接入模块，也不参与逐条消息处理。浏览器打开 `/admin` 即管理页，主要用于旁路查询 Trace 与运行状态。
 
@@ -196,7 +196,7 @@ DATA_DIR/files/<subjectKey>/<fileId>/original.pdf
 - 文件选择只对当前 Turn 有效；后续需要核对原文时再次 `file_use`。聊天历史保存文件 ID/元信息，不保存签名链接或 PDF Base64。
 - 不支持格式、通道未接入、上传或模型失败时明确反馈；原件保存成功后不会因分析失败而删除。
 
-原件和元信息有权限与哈希校验。首版没有文件删除/回传工具或远端文件清理流程；上传失败可能留下远端孤立文件。详细流程和实测范围见 [PDF 设计与实现说明](docs/designs/pdf-attachments/design.md)。
+原件和元信息有权限与哈希校验。首版没有文件删除/回传工具或远端文件清理流程；上传失败可能留下远端孤立文件。详细流程和实测范围见 [PDF 设计与实现说明](docs/specs/pdf-attachments/spec.md)。
 
 ## 用户记忆
 
@@ -291,7 +291,7 @@ node scripts/verify-file-input.mjs --live
 node scripts/verify-memory.mjs --live
 ```
 
-已完成的真实模型验证：[PDF 上传及跨会话读取](docs/designs/pdf-attachments/gateway-verification.json)、[记忆提炼、合并与新会话回忆](docs/memory-verification.json)。这不等同于所有文件格式、所有 provider、Linux 沙箱或真实微信全链路已验收。
+已完成的真实模型验证：[PDF 上传及跨会话读取](docs/specs/pdf-attachments/evidence/gateway-verification.json)、[记忆提炼、合并与新会话回忆](docs/memory-verification.json)。这不等同于所有文件格式、所有 provider、Linux 沙箱或真实微信全链路已验收。
 
 
 ## 运行时模型、供应商与账户管理

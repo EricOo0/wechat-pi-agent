@@ -1,0 +1,27 @@
+{
+  "description": "Project change documentation and task learning lifecycle; no global hooks replaced.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/project-workflow/workflow.py\" hook",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/project-workflow/workflow.py\" hook",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

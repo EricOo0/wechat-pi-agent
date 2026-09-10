@@ -1,24 +1,20 @@
 # 系统架构地图
 
-## 当前实现
+架构材料按当前实现、提案图示和历史归档组织。图片、SVG、提示词和渲染脚本放在对应专题的 assets 中；早期图稿整体归档。重构约束以 spec 为准。
 
-- [系统概览与源码依据](current-system-2026-09-09.md) · [PNG](current-system-2026-09-09.png)
-- [模块职责详细说明](layered-architecture-v3.md)
+| 分区 | 入口 | 用途 |
+|---|---|---|
+| 当前实现 | [2026-09-09 系统说明](current/2026-09-09/current-system-2026-09-09.md) | 已实现结构及源码依据，非目标架构 |
+| 系统重构图示 | [图示与标签说明](proposals/system-refactor/README.md) | 配合 [R-001 spec](../specs/system-refactor/spec.md) 阅读 |
+| 后置 Harness 提案 | [Harness](proposals/agent-harness/design.md) | 尚未纳入当前重构；关联 [H-001](../specs/agent-harness/requirements.md) |
+| 历史图稿 | [归档索引](archive/README.md) | 保留旧分层图、草图和生成材料，不能作为当前规格 |
+
+## 其他架构依据
+
 - [启动与依赖组装](../../src/bootstrap/container.ts)
-- [模型管理专题设计](../designs/model-provider-management/design.md)
-- [PDF 专题设计](../designs/pdf-attachments/design.md)
+- [模型管理专题](../specs/model-provider-management/spec.md)
+- [PDF 专题](../specs/pdf-attachments/spec.md)
 
-已有日期图表示对应源码基线，后续行为变化须同步相关说明。旧版图片与提示词保留用于追溯，不自动视为当前架构。
+## 维护规则
 
-## 设计提案
-
-- [H-001 需求](../specs/agent-harness/requirements.md) → [Harness 提案](proposals/agent-harness/design.md)
-- [提案 SVG](proposals/agent-harness/architecture.svg) · [PNG](proposals/agent-harness/architecture.png) · [绘图脚本](proposals/agent-harness/render_architecture.py)
-
-## 维护方式
-
-连接关系记录调用方、被调用方、接口或源码位置、状态和数据归属、失败与恢复行为。
-当前说明与提案明确区分；进度查 changelog，业务目标查 specs。
-既有当前图先保留原路径；未来按专题整理到 `current/` 时同步修复引用，不先创建空目录。
-
-文章中的“8 类连接点”定义尚未提供，暂不自行命名八类。
+当前架构只描述已实现事实；spec 规定目标、技术边界和验收。R-001 不另维护重复 design；图片是说明材料，发生差异以 spec 为准。进度与证据写入 [changelog](../changelog/README.md)。历史方案保留其原有身份，不因整理被标为现行设计。

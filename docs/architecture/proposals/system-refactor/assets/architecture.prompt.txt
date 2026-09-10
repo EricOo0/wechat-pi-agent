@@ -1,0 +1,15 @@
+Create a high-resolution landscape Chinese software architecture infographic, crisp readable typography, white background, professional flat technical diagram, generous spacing, no decorative icons. Title “WeChat × Pi Agent · 系统重构目标架构”. Subtitle “领域模块化 · 状态机 · Workflow Graph”. Badge “设计稿｜现有功能迁移”. Five horizontal layers, a narrow right rail, maximum legibility. This is NOT an implementation diagram.
+
+Layer 1 blue “接入与展示层”: cards “微信交互入口 / 消息接入、命令、回复呈现”, “Admin / Trace、记忆任务、模型认证页面”, “运维入口 / healthz、readyz、metrics、登录命令”.
+Layer 2 violet “应用层 · 按模块组织流程”: four cards “Messaging / 接收去重、会话映射 / Outbox、分段、重试、typing”, “Conversation / 生命周期、输入有序 / 归档、闲置、授权续跑关联”, “Tasks / 现有 Turn 队列 / 领取、执行、取消、终态”, “能力应用服务 / 文件入库、记忆整理 / 模型管理、权限控制”.
+Directly below INSIDE layer2 two outlined side-by-side blocks: “Workflow Runtime / Graph 定义、步骤结果、等待、检查点 / 状态机管理生命周期；引擎待选型”; “Agent Runtime / 单次 Run、模型绑定、上下文与工具桥接 / 经 Pi 执行 Agent Loop”.
+Layer3 teal “领域与能力层 · 模型、规则、策略”: 10 compact cards two rows: “会话 / 任务 / 投递状态”, “Context / 历史、压缩、回执重放”, “Memory / 快照、检索、版本合并”, “Permission / 授权、消费、撤销”, “Tools / 注册、调用规则”; “Skills / 发现、优先级、按需加载”, “Artifacts / 图片、PDF、文件引用”, “Models / 选择、认证协调、固定绑定”, “Execution / 沙箱策略、取消、清理”, “Observability / 事件、脱敏、查询模型”.
+At core boundary thin dashed strip “核心定义输出端口｜存储 · AgentEngine · 模型认证 · 文件传输 · 工具执行 · 渠道收发 · 遥测”.
+Layer4 blue “协议适配层 · 实现端口”: cards “iLink Adapter / 请求响应、二维码、附件协议”, “Pi Adapter / 会话、Loop、Skill 与事件转换”, “Model / Auth Adapter / Provider、OAuth、Codex 文件协议”, “Storage Adapter / SQL、事务、JSONL、Markdown”, “Sandbox Adapter / Seatbelt、bubblewrap、进程监管”, “Telemetry Adapter / 日志、指标与追踪输出”.
+Layer5 orange “基础设施与外部依赖”: cards “微信 iLink / CDN”, “Pi SDK / 模型供应商”, “SQLite / 本地文件系统”, “OS 沙箱 / 子进程”, “日志 / Prometheus”.
+Right vertical rail outside all layers “Bootstrap & Workers” then “配置与依赖组装”, “单实例锁与迁移”, “接收 / Turn / 投递”, “记忆 / 闲置扫描”, “优雅退出 / 启动恢复”, “Dry Run”.
+Arrows only a few meaningful: layer1 down to layer2 “命令 / 查询”; layer2 down to layer3 “调用规则与能力”; layer4 dashed arrows UP to ports “实现接口 · 依赖向内”; layer4 down to external dependencies “协议调用”. Do not draw core depending on concrete adapters. Flow and dependency not confused.
+Footer two clearly legible notes: “本次范围：保留现有功能；不引入 Harness / Goal Controller / 自动目标续跑”
+“恢复边界：Workflow 检查点为目标设计；Pi 内部精确 resume 未验证；保持现有启动中断策略”
+Small legend “实线：调用　虚线：接口实现　逻辑分层，不代表独立部署”.
+Accurate text, no fake extra Goal, Verification, Web/CLI, remote sandbox functionality cards. Ensure all text spelled well; no overlapping arrows.

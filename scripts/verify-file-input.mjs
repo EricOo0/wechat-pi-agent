@@ -57,5 +57,5 @@ try {
   results.push(summary);console.log(JSON.stringify(summary));
   if(!summary.markerMatched||summary.historyHasSignedUrl||(id==='one'&&!summary.contextReceiptPresent))throw Error('Gateway verification failed');
  }
- await writeFile('docs/designs/pdf-attachments/gateway-verification.json',JSON.stringify({testedAt:new Date().toISOString(),model:settings.piModelId,synthetic:true,results},null,2)+'\n');
+ await writeFile('docs/specs/pdf-attachments/evidence/gateway-verification.json',JSON.stringify({testedAt:new Date().toISOString(),model:settings.piModelId,synthetic:true,results},null,2)+'\n');
 } finally { gateway?.dispose();executor.close();repo.close();control.close();permissionsRepo.close();await rm(root,{recursive:true,force:true}); }

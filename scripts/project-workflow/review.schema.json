@@ -1,0 +1,60 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "checks",
+    "edits",
+    "blockers"
+  ],
+  "properties": {
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "spec",
+        "changelog",
+        "architecture",
+        "map"
+      ],
+      "properties": {
+        "spec": {
+          "type": "string"
+        },
+        "changelog": {
+          "type": "string"
+        },
+        "architecture": {
+          "type": "string"
+        },
+        "map": {
+          "type": "string"
+        }
+      }
+    },
+    "edits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
