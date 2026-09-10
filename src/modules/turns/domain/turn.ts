@@ -23,6 +23,9 @@ const ALLOWED: Readonly<Record<TurnStatus, readonly TurnStatus[]>> = {
 };
 
 export interface Turn {
+  taskId?: string;
+  taskRevision?: number;
+  source?: "user_message" | "task_continue" | "permission_continue";
   id: string;
   sessionId: string;
   inboxId: string;

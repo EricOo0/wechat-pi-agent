@@ -247,14 +247,14 @@ class WorkflowTest(unittest.TestCase):
             self.assertEqual(self.audit_mock.call_count, 1)
             sync.assert_called_once()
 
-    def test_sync_cannot_rewrite_spec_after_audit(self):
+    def test_sync_can_update_spec_body_after_audit(self):
         self.audit_mock.return_value = self.audit()
         before = (self.root / 'docs/specs/F-001/spec.md').read_text()
-        result = self.result([{'path': 'docs/specs/F-001/spec.md', 'content': 'weakened requirements'}])
+        result = self.result([{'path': 'docs/specs/F-001/spec.md', 'content': before + '\nDocumented implementation explanation.\n'}])
         with patch.object(w, 'review', return_value=result):
-            with self.assertRaisesRegex(ValueError, '改写规格'):
+            with self.assertRaisesRegex(ValueError, '已更新文档'):
                 w.pre_commit(self.root)
-        self.assertEqual(before, (self.root / 'docs/specs/F-001/spec.md').read_text())
+        self.assertIn('Documented implementation explanation', (self.root / 'docs/specs/F-001/spec.md').read_text())
 
     def test_incremental_deviation_cannot_bypass_gate(self):
         self.audit_mock.return_value = self.audit(stage='incremental', status='deviates')
@@ -294,16 +294,26 @@ class WorkflowTest(unittest.TestCase):
             w.pre_commit(self.root)
             self.assertEqual(self.audit_mock.call_count, 1)
 
-    def test_promotion_cannot_change_requirements_or_skip_readiness(self):
+    def test_promotion_can_sync_body_but_still_needs_readiness(self):
         result = self.promotion()
-        original = result['edits'][0]['content']
-        for ready, content in [(False, original), (True, original + '\nweakened requirement\n')]:
-            self.audit_mock.return_value['specs'][0]['implementation_ready'] = ready
-            result['edits'][0]['content'] = content
-            with patch.object(w, 'review', return_value=result):
-                with self.assertRaisesRegex(ValueError, '改写规格'):
-                    w.pre_commit(self.root)
-            self.assertEqual(w.metadata(self.root / 'docs/specs/F-001/spec.md')[0]['status'], 'implementing')
+        self.audit_mock.return_value['specs'][0]['implementation_ready'] = False
+        with patch.object(w, 'review', return_value=result):
+            with self.assertRaisesRegex(ValueError, '改写规格状态'):
+                w.pre_commit(self.root)
+        self.audit_mock.return_value['specs'][0]['implementation_ready'] = True
+        result['edits'][0]['content'] += '\nImplementation explanation.\n'
+        with patch.object(w, 'review', return_value=result):
+            with self.assertRaisesRegex(ValueError, '已更新文档'):
+                w.pre_commit(self.root)
+        self.assertIn('Implementation explanation', (self.root / 'docs/specs/F-001/spec.md').read_text())
+
+    def test_spec_index_can_be_updated_by_sync(self):
+        self.stage_change()
+        result = self.result([{'path': 'docs/specs/README.md', 'content': '# Specs\n\nUpdated navigation.\n'}])
+        with patch.object(w, 'review', return_value=result):
+            with self.assertRaisesRegex(ValueError, '已更新文档'):
+                w.pre_commit(self.root)
+        self.assertIn('Updated navigation', (self.root / 'docs/specs/README.md').read_text())
 
     def test_local_unverified_cannot_promote_even_if_ready_true(self):
         result = self.promotion()

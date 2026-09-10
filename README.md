@@ -2,7 +2,7 @@
 
 通过微信 iLink 使用的个人 AI 助手。基于 Node.js / TypeScript，使用 Pi SDK 驱动 Agent，支持文字、图片、PDF、用户文件库、用户记忆和受控工具执行。
 
-开发维护从 [AGENTS.md](AGENTS.md) 和 [文档地图](docs/README.md) 开始；[业务需求](docs/specs/README.md) 定义目标与验收，[变更与计划](docs/changelog/README.md) 记录进度。当前先评审并推进[系统架构重构](docs/specs/system-refactor/spec.md)，完成后再扩展 [Agent Harness](docs/specs/agent-harness/requirements.md)。
+开发维护从 [AGENTS.md](AGENTS.md) 和 [文档地图](docs/README.md) 开始；[业务需求](docs/specs/README.md) 定义目标与验收，[变更与计划](docs/changelog/README.md) 记录进度。[系统架构重构](docs/specs/system-refactor/spec.md)与 [Task / Harness](docs/specs/agent-harness/spec.md) 已完成本地实现，部署与真实账号验收另列。
 
 ## 当前能力
 
@@ -27,7 +27,12 @@
 flowchart LR
   Input[微信接入] --> Messaging[Messaging]
   Messaging --> Turns[Conversation / Turns]
-  Turns --> Runtime[Agent Runtime / Pi]
+  Turns --> Tasks[Task Manager：版本 / 预算 / 控制]
+  Tasks --> Runtime[Agent Runtime / Pi]
+  Runtime --> Outcome[结构化结果]
+  Outcome --> Tasks
+  Tasks --> Review[申请完成时独立 Review]
+  Review --> Tasks
   Runtime --> Capabilities[上下文 / 文件 / 记忆 / 工具权限]
   Turns --> Outbox[Outbox 投递]
   Outbox --> WeChat[iLink / 微信]
@@ -40,7 +45,7 @@ flowchart LR
 | 职责模块 | 驱动与用例 | 领域模型与结果 |
 |---|---|---|
 | 消息接入 | `PollLoop → IngestMessage`：发送者校验、去重、会话关联、持久化和入队 | `InboundMessage`；Inbox、cursor、待执行 Turn |
-| 任务执行 | `TurnWorkerLoop → RunNextTurn`：领取任务、处理命令和文件、按需调用 Agent、保存结果 | `Turn / Step`；执行结果与 Outbox |
+| 任务执行 | `TurnWorkerLoop → RunNextTurn → TaskManager`：版本/预算控制、Agent 执行、完成 Review、继续或等待 | `Task / Turn / Step`；结构化结果、任务事件与 Outbox |
 | 回复投递 | `OutboxWorkerLoop → DeliverReply`：领取回复、经 Channel 发送、记录结果和重试 | `OutboxMessage`；发送状态与重试时间 |
 | 会话与记忆 | `EndSession`、闲置扫描与记忆 worker：归档、提炼、合并、搜索和读取 | `Session / UserMemory / MemoryJob`；Markdown 正文与任务状态 |
 | 权限与工具 | 授权确认、策略编译、受控执行 | 授权、申请、权限主体与审计 |
@@ -61,7 +66,8 @@ flowchart LR
 
 ```text
 微信 → iLinkHttpClient → IngestMessage → SQLite Inbox / Session / Turn
-     → RunNextTurn → PiAgentGateway → Pi SDK / pi-ai → 模型服务
+     → RunNextTurn → TaskManager → PiAgentGateway → Pi SDK / pi-ai → 模型服务
+     → 结构化结果 → 必要时 Review → Task 状态 / 内部续跑
      → SQLite Outbox → DeliverReply → 微信文本回复
 ```
 
@@ -72,6 +78,31 @@ flowchart LR
 - 用户文件与记忆通过专用工具访问；图片、文件传输、模型调用和微信收发由控制面处理，不需要开启 Bash 或普通工具网络权限。
 
 架构图表示当前代码结构；精确行为以以下说明和代码为准，不代表真实账号或运行环境验收结论。
+
+## Task 执行与控制（本地已实现）
+
+[H-001](docs/specs/agent-harness/spec.md) 已完成本地实现及 146 个测试验证，尚未部署和进行真实模型验收。聊天与持续工作统一使用 Task，申请完成后才独立 Review；同一 Task 初始最多 30 轮 ReAct。以下图片保留设计阶段的原始标签，当前实现状态以本节和[源码架构说明](docs/architecture/current/2026-09-10/task-runtime.md)为准。
+
+### 接入 Task 后的系统架构
+
+![统一 Task 系统架构](docs/architecture/proposals/agent-harness/assets/task-architecture-v2.png)
+
+Conversation 保留多个历史 Task，同一时刻最多一个未关闭 Task，新消息关联该 Task。每个 Task 可以有多个 Turn/Run；同会话最多一个 Run 修改 Agent 状态。Task 保存工作进展，Memory 保存用户长期知识，控制操作直接作用于目标 Task。
+
+### Task 执行流程
+
+![Task 执行、Review、HITL 与预算流程](docs/architecture/proposals/agent-harness/assets/task-flow.png)
+
+- 执行 AI 返回 continue、waiting 或 request_completion；只有申请完成时才调用 Review。
+- Review 通过后，Task Manager 核对目标版本与控制状态，再完成并投递结果；有缺口则继续，需要用户确认则进入 HITL。
+- 30 轮 ReAct 跨 Turn/Run 累计，等待不耗轮数；Review 单独计数。第 30 轮仍可申请最终 Review，未通过且无预算则暂停，不自动开始第 31 轮。
+- 图中 A 表示返回状态与预算检查；当前不引入 Graph、checkpoint 或跨进程自动恢复。
+
+微信命令：`/task status`、`/task list`、`/task pause`、`/task cancel`、`/task resume`、`/task budget N`。管理页 `/admin/tasks` 可查看任务，JSON 入口为 `/debug/tasks` 和 `/debug/tasks/:id`。
+
+WAITING/PAUSED 阻止闲置归档；`/new` 取消旧任务。重启后仅保留历史，不自动恢复。首次升级包含 SQLite migration 9，操作前参阅[任务操作与迁移](docs/runbook/tasks.md)。
+
+[图示说明与绘制材料](docs/architecture/proposals/agent-harness/task-architecture.md) · [已确认行为](docs/specs/agent-harness/spec.md#9-已确认行为与实现契约)。
 
 ## 快速开始
 
@@ -338,3 +369,9 @@ node scripts/verify-memory.mjs --live
 Pi 0.84.3 未公开导出 AuthStorage；`staged-credential-store.ts` 将对锁定版本的内部路径依赖集中在一个位置，复用 Pi 的文件锁和单供应商更新，未手改 node_modules。升级 Pi 时必须运行该桥接与认证回归测试。其他使用同一 auth.json 的外部进程不受本服务的任务隔离控制，不应同时手动更换该账户。
 
 管理命令结果进入 Turn Trace；每个 model_call 记录实际供应商/模型。管理页认证进度独立展示，脱敏审计可通过受保护的 `/admin/api/events` 查询。真实账户 OAuth/API Key 登录需要由用户在本机完成验收，自动测试只使用隔离测试凭证。
+
+### Task Trace 管理视图
+
+`/admin` 和 `/admin/tasks` 统一展示 Conversation 下的 Task、目标版本、进度、预算及执行时间线。点击 Run 查看模型/工具树、输入快照与结构化结果；Review、用户控制和回复投递独立展示。执行与 Review 用量分别统计，数据缺失明确标注。`/debug/tasks/:id/trace` 提供聚合 JSON，原 Trace/记忆页保留在 `/admin/traces`。
+
+[H-002 规格与验收](docs/specs/task-trace/spec.md) · [合成数据页面预览](docs/specs/task-trace/evidence/task-page-fixture.png)。本地已实现，未部署。

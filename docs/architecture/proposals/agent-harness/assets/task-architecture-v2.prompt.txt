@@ -1,0 +1,11 @@
+Edit this Chinese system architecture image preserving clean five-layer layout, colors, module coverage and legibility. Update it to the now agreed unified Task design. Title “WeChat × Pi Agent · 统一 Task 架构”. Badge “目标设计｜尚未实现”.
+Critical changes:
+- Remove ALL “普通聊天可直接进入 Turns”, “普通聊天可以不创建 Task”, or ordinary-chat bypass. Left application group title “消息与会话处理”. Messaging and Conversation feed Tasks via a clear arrow labelled “创建 / 关联 Task”. All ordinary conversational inputs use Task; control commands target existing Task without creating a separate task.
+- Replace Tasks box text with “Tasks〔新增〕 / 聊天与持续任务统一建模 / 创建、查询、补充、暂停、取消”.
+- Add relation text “Conversation → 多个 Task → 多个 Turn / Run；同会话最多一个执行所有者”.
+- Keep Task Controller → Turns → Agent Runtime and return path to Task Controller. Return label “continue / waiting / request_completion”.
+- Rename “Completion Check〔新增〕” to “Review〔新增〕”. Subtitle “仅 request_completion 时调用 / 核对目标、结果与证据”. Controller→Review arrow label “申请完成”; Review→Controller label “通过 / 缺口 / HITL”. Controller manages successful finish, further execution or waiting; do not draw Review after every run.
+- Task domain box: “目标、约束、状态、进展 / ReAct 用量、等待与证据”.
+- Keep all existing Context, Memory, Permissions, Tools, Skills, Artifacts, Models, Execution, adapters and infrastructure modules.
+- Footer rules: “同一 Task 累计最多 30 轮 ReAct；跨 Turn / Run 不重置”; “Review 单独计数，不占 ReAct 预算；第 30 轮仍可申请最终 Review”; “/new 关闭会话时取消未完成 Task，已有结果保留”; “当前不引入 Graph / checkpoint / 跨进程自动续跑”.
+Ensure arrows unambiguous and avoid overlapping labels. No added framework or engine, no advanced completion-strength classification. This is architecture, not detailed state flow.

@@ -1,0 +1,127 @@
+
+> wechat-pi-agent@0.1.0 check
+> npm run check:architecture && npm run lint && npm run typecheck && npm test && npm run build
+
+
+> wechat-pi-agent@0.1.0 check:architecture
+> node scripts/check-architecture.mjs
+
+Architecture boundaries passed (152 source files).
+
+> wechat-pi-agent@0.1.0 lint
+> eslint src test --max-warnings=0
+
+
+> wechat-pi-agent@0.1.0 typecheck
+> tsc --noEmit
+
+
+> wechat-pi-agent@0.1.0 test
+> vitest run
+
+
+ RUN  v3.2.4 /Users/bytedance/GolandProjects/test
+
+(node:23492) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23497) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/unit/permissions/permission-service.test.ts (11 tests) 154ms
+(node:23496) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23495) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23490) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23530) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/integration/permission-continuation.test.ts (8 tests) 329ms
+ ✓ test/integration/memory-system.test.ts (9 tests) 421ms
+ ✓ test/integration/permission-flow.test.ts (5 tests) 179ms
+(node:23541) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/unit/runtime/architecture.test.ts (1 test) 1509ms
+   ✓ rejects private cross-module access and IO in a domain while allowing public ports  1508ms
+ ✓ test/integration/tasks.test.ts (19 tests) 922ms
+(node:23570) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/unit/pi/skill-loader.test.ts (1 test) 245ms
+ ✓ test/integration/task-migration.test.ts (1 test) 97ms
+(node:23573) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23489) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/integration/sqlite-control-plane.test.ts (4 tests) 95ms
+(node:23494) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/unit/pi/skill-catalog.test.ts (4 tests) 877ms
+   ✓ bundled skill catalog and load tracing > places bundled skills above project auto and global skills, below explicit project paths  481ms
+(node:23615) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/integration/admin-traces.test.ts (1 test) 240ms
+(node:23686) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/contract/ilink-http-client.test.ts (2 tests) 43ms
+ ✓ test/unit/models/model-management.test.ts (5 tests) 56ms
+ ✓ test/integration/user-files.test.ts (5 tests) 194ms
+(node:23542) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:23722) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/integration/e2e-dry-run.test.ts (1 test) 38ms
+ ✓ test/integration/model-switching.test.ts (1 test) 162ms
+(node:23548) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/integration/memory-runtime.test.ts (1 test) 432ms
+   ✓ gracefully archives sessions, queues memory work, and processes it after restart  431ms
+ ✓ test/unit/ilink/image-downloader.test.ts (2 tests) 28ms
+ ✓ test/unit/models/provider-authentication.test.ts (4 tests) 157ms
+ ✓ test/contract/ilink-image-update.test.ts (1 test) 23ms
+ ✓ test/integration/service-shutdown.test.ts (1 test) 4090ms
+   ✓ SIGTERM runs real main shutdown before releasing the process lock  4090ms
+ ✓ test/unit/files/codex-file-input.test.ts (6 tests) 11ms
+ ✓ test/unit/permissions/policy-compiler.test.ts (2 tests) 19ms
+ ✓ test/integration/memory-context.test.ts (1 test) 106ms
+ ✓ test/unit/tasks/task-trace.test.ts (1 test) 14ms
+ ✓ test/unit/pi/system-prompt.test.ts (2 tests) 8ms
+ ✓ test/unit/application/run-next-turn.test.ts (5 tests) 10ms
+ ✓ test/unit/application/ingest-message.test.ts (1 test) 4ms
+(node:23583) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/unit/application/recover-interrupted-work.test.ts (1 test) 4ms
+ ✓ test/unit/application/deliver-reply.test.ts (2 tests) 4ms
+ ✓ test/integration/model-admin.test.ts (1 test) 68ms
+ ✓ test/unit/reasoning-view.test.ts (4 tests) 4ms
+ ✓ test/unit/trace-model.test.ts (6 tests) 6ms
+ ✓ test/unit/observability/metrics.test.ts (1 test) 2ms
+ ✓ test/unit/application/command-router.test.ts (2 tests) 2ms
+ ✓ test/unit/application/reply-chunker.test.ts (3 tests) 2ms
+ ✓ test/unit/pi/model-call-trace.test.ts (4 tests) 6ms
+ ✓ test/unit/bootstrap/config.test.ts (2 tests) 4ms
+ ✓ test/unit/tasks/task.test.ts (3 tests) 2ms
+ ✓ test/unit/pi/conversation-context.test.ts (1 test) 3ms
+ ✓ test/unit/files/redact-file-errors.test.ts (1 test) 1ms
+(node:23723) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/integration/task-reviewer.test.ts (1 test) 29ms
+ ✓ test/unit/memory/redaction.test.ts (1 test) 2ms
+ ✓ test/integration/managed-tools.test.ts (2 tests) 4230ms
+   ✓ managed Pi tools through Seatbelt > defaults to basic permissions and applies an approved Full Access grant then reset to the SAME tools  3421ms
+   ✓ managed Pi tools through Seatbelt > permits a granted directory once without leaking the grant to a second operation  808ms
+ ✓ test/local-sandbox-executor.test.ts (8 tests) 8127ms
+   ✓ Seatbelt tool executor > allows workspace tools but rejects outside reads, writes and symlinks  4470ms
+   ✓ Seatbelt tool executor > does not leak environment secrets and blocks direct network egress  789ms
+   ✓ Seatbelt tool executor > denies protected local ports through the proxy despite wildcard network access  1025ms
+   ✓ Seatbelt tool executor > keeps concurrent users' policies isolated  398ms
+   ✓ Seatbelt tool executor > keeps nested control paths denied when their ancestor is granted  354ms
+   ✓ Seatbelt tool executor > revokes running commands and kills background descendants  856ms
+
+ Test Files  45 passed (45)
+      Tests  148 passed (148)
+   Start at  16:23:20
+   Duration  8.54s (transform 1.41s, setup 0ms, collect 32.52s, tests 22.96s, environment 6ms, prepare 4.24s)
+
+
+> wechat-pi-agent@0.1.0 build
+> node scripts/clean-build.mjs && tsc -p tsconfig.build.json && node scripts/copy-sandbox-workers.mjs
+

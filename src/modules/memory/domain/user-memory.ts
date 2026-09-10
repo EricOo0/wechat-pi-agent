@@ -4,7 +4,7 @@ export interface SessionMemorySource {
   sessionId: string;
   endedAt: string;
   reason: string;
-  turns: Array<{ turnId: string; user: string; assistant: string; status: string; responseGenerated: boolean; errorCode?: string; files: unknown[]; tools: unknown[] }>;
+  turns: Array<{ inputSource?: string; executionInput?: string; turnId: string; user: string; assistant: string; status: string; responseGenerated: boolean; errorCode?: string; files: unknown[]; tools: unknown[] }>;
   truncated: boolean;
 }
 export interface ExtractedMemory { content: string; shouldMerge: boolean }

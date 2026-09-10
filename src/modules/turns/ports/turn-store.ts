@@ -1,8 +1,10 @@
+import type { TaskSettlement } from "../../tasks/index.js";
 import type { ConversationContextStore } from "../../conversation/index.js";
 import type { ClaimedTurn } from "../domain/turn.js";
 import type { AgentEvent } from "../../observability/index.js";
 import type { AgentInvocationTrace } from "../../../runtime/agent/ports/agent.js";
 export interface CompleteTurnInput {
+  taskSettlement?: TaskSettlement;
   turnId: string;
   finalResponse: string;
   chunks: readonly string[];

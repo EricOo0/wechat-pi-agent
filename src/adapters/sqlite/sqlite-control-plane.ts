@@ -1,3 +1,6 @@
+import { SqliteTaskStore } from "./sqlite-task-store.js";
+import { isTaskInput, type TaskStore } from "../../modules/tasks/index.js";
+import { CommandRouter } from "../../modules/messaging/index.js";
 import type { EndSessionInput } from "../../modules/conversation/index.js";
 import type { ConversationContextEvent } from "../../modules/conversation/index.js";
 import type { InboundFileReference } from "../../modules/artifacts/index.js";
@@ -61,6 +64,14 @@ function nowIso(): string {
 export class SqliteControlPlane implements ControlPlane {
   private readonly db: DatabaseSync;
   private readonly traceRetention: number;
+  private tasks?: SqliteTaskStore;
+  private taskOwner?: (message: InboundMessage, sessionId: string) => string;
+
+  public enableTasks(owner: (message: InboundMessage, sessionId: string) => string): TaskStore {
+    this.taskOwner = owner;
+    this.tasks = new SqliteTaskStore(this.db);
+    return this.tasks;
+  }
 
   public constructor(path: PathLike, options: { traceRetention?: number } = {}) {
     this.traceRetention = options.traceRetention ?? 100;
@@ -69,7 +80,9 @@ export class SqliteControlPlane implements ControlPlane {
   }
 
   public migrate(): void {
-    this.transaction(() => {
+    // SQLite table rebuild: disable FK actions before BEGIN, then verify before commit.
+    this.db.exec("PRAGMA foreign_keys = OFF");
+    try { this.transaction(() => {
       this.db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL) STRICT;");
       const applied = this.db.prepare("SELECT 1 FROM schema_migrations WHERE version = ?");
       const record = this.db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)");
@@ -79,7 +92,8 @@ export class SqliteControlPlane implements ControlPlane {
           record.run(migration.version, nowIso());
         }
       }
-    });
+      if (this.db.prepare("PRAGMA foreign_key_check").all().length) throw new Error("Migration left invalid foreign keys");
+    }); } finally { this.db.exec("PRAGMA foreign_keys = ON"); }
   }
 
   public healthCheck(): { ready: boolean; reason?: string } {
@@ -165,6 +179,11 @@ export class SqliteControlPlane implements ControlPlane {
           timestamp,
           timestamp,
         );
+        if (this.tasks && this.taskOwner && isTaskInput(message.text, Boolean(message.images?.length || message.files?.length))) {
+          const pendingNew = this.db.prepare("SELECT i.text FROM turns t JOIN inbox i ON i.id=t.inbox_id WHERE t.session_id=? AND t.status IN ('QUEUED','RUNNING') AND t.source='user_message'").all(sessionId)
+            .some(row => new CommandRouter().route(String(row.text)).type === 'new');
+          if (!pendingNew) this.tasks.attach(sessionId, this.taskOwner(message, sessionId), turnId, message.text);
+        }
       }
       this.db.prepare(`
         INSERT INTO cursor (account_id, value, updated_at) VALUES (?, ?, ?)
@@ -192,7 +211,12 @@ export class SqliteControlPlane implements ControlPlane {
         WHERE id = ? AND status = 'QUEUED'
       `).run(timestamp, ownerId, leaseUntil, timestamp, turnId);
       if (Number(claimed.changes) !== 1) return undefined;
-      return this.loadClaimedTurn(turnId);
+      const claimedTurn = this.loadClaimedTurn(turnId);
+      if (this.tasks && this.taskOwner && !claimedTurn.turn.taskId && isTaskInput(claimedTurn.message.text, Boolean(claimedTurn.message.files?.length || claimedTurn.message.images?.length))) {
+        this.tasks.attach(claimedTurn.session.id, this.taskOwner(claimedTurn.message, claimedTurn.session.id), turnId, claimedTurn.message.text);
+        return this.loadClaimedTurn(turnId);
+      }
+      return claimedTurn;
     });
   }
 
@@ -258,7 +282,11 @@ export class SqliteControlPlane implements ControlPlane {
         FROM turns t JOIN inbox i ON i.id = t.inbox_id WHERE t.id = ?
       `).get(input.turnId) as SqliteRow | undefined;
       if (row === undefined) throw new Error(`Turn not found: ${input.turnId}`);
-      if (text(row, "status") !== "RUNNING") throw new Error(`Turn is not running: ${input.turnId}`);
+      if (text(row, "status") !== "RUNNING") {
+        if (input.taskSettlement) return;
+        throw new Error(`Turn is not running: ${input.turnId}`);
+      }
+      if (input.taskSettlement && this.tasks && !this.tasks.settle({ ...input.taskSettlement, turnId: input.turnId })) input = { ...input, chunks: [] };
       const timestamp = nowIso();
       this.db.prepare(`
         UPDATE turns SET status = ?, final_response = ?, completed_at = ?, lease_owner = NULL,
@@ -294,6 +322,11 @@ export class SqliteControlPlane implements ControlPlane {
     if (source.session.id !== approval.session.id || source.session.status !== "ACTIVE"
       || source.message.senderId !== approval.message.senderId || source.message.accountId !== approval.message.accountId
       || source.message.peerId !== approval.message.peerId) throw new Error("Permission continuation source does not match the confirmed user/session");
+    if (this.tasks && source.turn.taskId) {
+      const continued = this.tasks.wakePermission(source.turn.taskId, `用户已确认权限 ${continuation.permissionRequestId}。检查当前权限和已有结果，继续任务，不重复已完成操作。`);
+      if (continued) this.db.prepare("INSERT INTO permission_continuations VALUES (?,?,?,?,?)").run(continuation.permissionRequestId, source.turn.id, approvalTurnId, continued, timestamp);
+      return;
+    }
     const inboxId = newId("msg");
     const turnId = newId("trn");
     const prompt = `用户已确认本任务的权限申请（${continuation.permissionRequestId}）。请检查当前权限和已有会话／工具结果，从被权限阻塞的位置继续；不要从头重复已经完成的操作。若任务已完成，只说明结果。\n\n原始任务：\n${source.message.text}`;
@@ -307,12 +340,15 @@ export class SqliteControlPlane implements ControlPlane {
   }
 
   public failTurn(input: FailTurnInput): void {
+    this.transaction(() => {
     const timestamp = nowIso();
     const result = this.db.prepare(`
       UPDATE turns SET status = 'FAILED', error_code = ?, error_message = ?, completed_at = ?,
         lease_owner = NULL, lease_expires_at = NULL, updated_at = ? WHERE id = ? AND status = 'RUNNING'
     `).run(input.errorCode, input.errorMessage, timestamp, timestamp, input.turnId);
     if (Number(result.changes) !== 1) throw new Error(`Running turn not found: ${input.turnId}`);
+    this.tasks?.turnFailed(input.turnId, input.errorCode);
+    });
   }
 
   public updateSessionPiLocator(sessionId: string, piSessionId?: string, piSessionFile?: string): void {
@@ -440,6 +476,7 @@ export class SqliteControlPlane implements ControlPlane {
       if (!row) return false;
       const busy = this.db.prepare("SELECT id FROM turns WHERE session_id=? AND status IN ('QUEUED','RUNNING') AND id<>?").all(input.sessionId, input.currentTurnId ?? "");
       if (input.reason === "idle_timeout") {
+        if (this.tasks?.preventsIdle(input.sessionId)) return false;
         if (busy.length) return false;
         const activity = this.db.prepare(`SELECT max(at) AS at FROM (
           SELECT i.created_at AS at FROM inbox i JOIN turns t ON t.inbox_id=i.id WHERE t.session_id=?
@@ -450,6 +487,8 @@ export class SqliteControlPlane implements ControlPlane {
       }
       if (input.reason === "manual" && this.db.prepare("SELECT 1 FROM turns WHERE session_id=? AND status='RUNNING' AND id<>?").get(input.sessionId,input.currentTurnId??"")) return false;
       const ended = input.now.toISOString();
+      this.tasks?.closeConversation(input.sessionId);
+      if (this.tasks) this.db.prepare("UPDATE turns SET status='CANCELLED',completed_at=? WHERE session_id=? AND status='QUEUED' AND source<>'user_message'").run(ended, input.sessionId);
       this.db.prepare("UPDATE sessions SET status='ARCHIVED',archived_at=?,end_reason=?,updated_at=?,cleanup_done=0 WHERE id=?").run(ended,input.reason,ended,input.sessionId);
       if (input.reason === "manual") {
         // Messages already queued after /new belong to the new conversation, not the sealed one.
@@ -457,7 +496,7 @@ export class SqliteControlPlane implements ControlPlane {
         const queued = this.db.prepare("SELECT 1 FROM turns WHERE session_id=? AND status='QUEUED'").get(input.sessionId);
         if (queued) {
           const next = this.ensureActiveSession(text(row,"account_id"),text(row,"peer_id"),ended);
-          this.db.prepare("UPDATE turns SET session_id=? WHERE session_id=? AND status='QUEUED'").run(next,input.sessionId);
+          this.db.prepare("UPDATE turns SET session_id=?,task_id=NULL,task_revision=NULL WHERE session_id=? AND status='QUEUED'").run(next,input.sessionId);
         }
       } else if (input.reason === "shutdown" || input.reason === "recovery") {
         this.db.prepare("UPDATE turns SET status='CANCELLED',error_code='SESSION_INTERRUPTED',error_message='Session ended before this task completed',completed_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE session_id=? AND status IN ('QUEUED','RUNNING')").run(ended,input.sessionId);
@@ -486,7 +525,7 @@ export class SqliteControlPlane implements ControlPlane {
       SELECT t.id, t.queued_at, t.final_response, i.channel_message_id
       FROM turns t JOIN inbox i ON i.id=t.inbox_id JOIN turns current ON current.id=?
       WHERE t.session_id=current.session_id AND t.rowid<current.rowid
-        AND t.final_response IS NOT NULL AND trim(i.text)=''
+        AND t.source='user_message' AND t.final_response IS NOT NULL AND trim(i.text)=''
         AND i.files_json IS NOT NULL AND coalesce(json_array_length(i.images_json),0)=0
       ORDER BY t.rowid DESC LIMIT 20
     `).all(beforeTurnId) as SqliteRow[];
@@ -526,8 +565,8 @@ export class SqliteControlPlane implements ControlPlane {
       message: this.toMessage({
         id: row.inbox_id, account_id: row.inbox_account_id, channel_message_id: row.channel_message_id,
         peer_id: row.inbox_peer_id, sender_id: row.sender_id, sequence: row.sequence,
-        context_token: row.context_token, text: row.inbox_text, received_at: row.received_at, raw_json: row.raw_json,
-        images_json: row.images_json, files_json: row.files_json,
+        context_token: row.context_token, text: row.input_text ?? row.inbox_text, received_at: row.received_at, raw_json: row.raw_json,
+        images_json: row.images_json, files_json: row.source === "user_message" ? row.files_json : null,
       }, true),
       steps: steps.map((step) => ({
         ...step,
@@ -542,8 +581,8 @@ export class SqliteControlPlane implements ControlPlane {
 
   public getAgentTrace(turnId: string): unknown {
     const row = this.db.prepare(`
-      SELECT a.*, t.id AS turn_id, coalesce(a.provider,'') AS provider, coalesce(a.model_id,'') AS model_id, coalesce(a.system_prompt,'') AS system_prompt, coalesce(a.skills_json,'[]') AS skills_json, coalesce(a.tools_json,'[]') AS tools_json, coalesce(a.captured_at,t.queued_at) AS captured_at, t.session_id, t.queued_at, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
-        i.text AS user_prompt
+      SELECT a.*, t.id AS turn_id, coalesce(a.provider,'') AS provider, coalesce(a.model_id,'') AS model_id, coalesce(a.system_prompt,'') AS system_prompt, coalesce(a.skills_json,'[]') AS skills_json, coalesce(a.tools_json,'[]') AS tools_json, coalesce(a.captured_at,t.queued_at) AS captured_at, t.session_id, t.source, t.task_id, t.task_revision, t.queued_at, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
+        coalesce(t.input_text,i.text) AS user_prompt
       FROM turns t
       LEFT JOIN agent_traces a ON t.id = a.turn_id
       JOIN inbox i ON i.id = t.inbox_id
@@ -557,8 +596,8 @@ export class SqliteControlPlane implements ControlPlane {
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
     const rows = this.db.prepare(`
       SELECT t.id AS turn_id, coalesce(a.provider,'') AS provider, coalesce(a.model_id,'') AS model_id, coalesce(a.skills_json,'[]') AS skills_json, coalesce(a.tools_json,'[]') AS tools_json, coalesce(a.captured_at,t.queued_at) AS captured_at, a.permission_revision, a.permission_mode,
-        t.session_id, t.queued_at, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
-        i.text AS user_prompt
+        t.session_id, t.source, t.task_id, t.task_revision, t.queued_at, t.status, t.started_at, t.completed_at, t.final_response, t.error_code, t.error_message,
+        coalesce(t.input_text,i.text) AS user_prompt
       FROM turns t
       LEFT JOIN agent_traces a ON t.id = a.turn_id
       JOIN inbox i ON i.id = t.inbox_id
@@ -569,6 +608,8 @@ export class SqliteControlPlane implements ControlPlane {
       turnId: text(row, "turn_id"),
       sessionId: text(row, "session_id"),
       queuedAt: date(text(row, "queued_at")),
+      source: text(row, "source") as NonNullable<Turn["source"]>,
+      ...(row.task_id ? { taskId: text(row, "task_id"), taskRevision: integer(row, "task_revision") } : {}),
       provider: text(row, "provider"),
       modelId: text(row, "model_id"),
       status: text(row, "status"),
@@ -611,6 +652,8 @@ export class SqliteControlPlane implements ControlPlane {
       turnId: text(row, "turn_id"),
       sessionId: text(row, "session_id"),
       queuedAt: date(text(row, "queued_at")),
+      source: text(row, "source") as NonNullable<Turn["source"]>,
+      ...(row.task_id ? { taskId: text(row, "task_id"), taskRevision: integer(row, "task_revision") } : {}),
       provider: text(row, "provider"),
       modelId: text(row, "model_id"),
       systemPrompt: text(row, "system_prompt"),
@@ -662,8 +705,8 @@ export class SqliteControlPlane implements ControlPlane {
       message: this.toMessage({
         id: row.inbox_id, account_id: row.inbox_account_id, channel_message_id: row.channel_message_id,
         peer_id: row.inbox_peer_id, sender_id: row.sender_id, sequence: row.sequence,
-        context_token: row.context_token, text: row.inbox_text, received_at: row.received_at, raw_json: row.raw_json,
-        images_json: row.images_json, files_json: row.files_json,
+        context_token: row.context_token, text: row.input_text ?? row.inbox_text, received_at: row.received_at, raw_json: row.raw_json,
+        images_json: row.images_json, files_json: row.source === "user_message" ? row.files_json : null,
       }),
       ...this.continuationForTurn(turnId),
     };
@@ -694,6 +737,8 @@ export class SqliteControlPlane implements ControlPlane {
       id: text(row, "id"), sessionId: text(row, "session_id"), inboxId: text(row, "inbox_id"),
       traceId: text(row, "trace_id"), runId: text(row, "run_id"), status: text(row, "status") as Turn["status"],
       queuedAt: date(text(row, "queued_at")),
+      source: text(row, "source") as NonNullable<Turn["source"]>,
+      ...(row.task_id ? { taskId: text(row, "task_id"), taskRevision: integer(row, "task_revision") } : {}),
       ...(optional("started_at") === undefined ? {} : { startedAt: date(text(row, "started_at")) }),
       ...(optional("completed_at") === undefined ? {} : { completedAt: date(text(row, "completed_at")) }),
       ...(optional("final_response") === undefined ? {} : { finalResponse: text(row, "final_response") }),

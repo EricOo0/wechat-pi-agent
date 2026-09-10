@@ -1,3 +1,4 @@
+import type { Task, TaskInput } from "../../../modules/tasks/index.js";
 import type { TurnModelBinding } from "../../../modules/models/index.js";
 import type { ConversationContextEvent } from "../../../modules/conversation/index.js";
 import type { fileSummary } from "../../../modules/artifacts/index.js";
@@ -17,6 +18,8 @@ export interface AgentInvocationTrace {
 }
 
 export interface AgentRunRequest {
+  task?: { task: Task; inputs: TaskInput[] };
+  beforeModelCall?: () => void;
   modelBinding?: TurnModelBinding;
   session: ConversationSession;
   prompt: string;

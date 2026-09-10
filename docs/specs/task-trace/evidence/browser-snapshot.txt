@@ -1,0 +1,89 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - heading "任务执行记录" [level=1] [ref=e3]
+    - link "历史 Trace / 记忆" [ref=e4] [cursor=pointer]:
+      - /url: /admin/traces
+    - link "模型与账户" [ref=e5] [cursor=pointer]:
+      - /url: /admin/models
+    - button "刷新" [ref=e6] [cursor=pointer]
+    - generic [ref=e7]: 已更新 2026/9/10 16:23:20
+  - generic [ref=e8]:
+    - complementary [ref=e9]:
+      - textbox "搜索任务" [ref=e10]:
+        - /placeholder: 目标、Task ID、Conversation
+      - combobox "筛选状态" [ref=e11]:
+        - option "全部状态" [selected]
+        - option "已完成"
+        - option "等待用户"
+      - generic [ref=e12]:
+        - heading "Conversation" [level=3] [ref=e13]
+        - generic [ref=e14]: conversation-demo
+        - button "分析三个 PDF，汇总主要差异 已完成 2026/9/10 16:00:00" [ref=e15] [cursor=pointer]:
+          - strong [ref=e16]: 分析三个 PDF，汇总主要差异
+          - generic [ref=e17]: 已完成
+          - generic [ref=e18]: 2026/9/10 16:00:00
+        - button "等待补充材料 <script>bad()</script> 等待用户 2026/9/10 16:00:00" [ref=e19] [cursor=pointer]:
+          - strong [ref=e20]: 等待补充材料 <script>bad()</script>
+          - generic [ref=e21]: 等待用户
+          - generic [ref=e22]: 2026/9/10 16:00:00
+    - main [ref=e23]:
+      - generic [ref=e24]:
+        - heading "分析三个 PDF，汇总主要差异" [level=2] [ref=e25]
+        - generic [ref=e26]: 已完成
+        - generic [ref=e27]: 版本 2
+        - generic [ref=e28]: task-demo
+        - paragraph [ref=e29]: 已完成三份文档对比，复核通过
+        - paragraph
+        - generic [ref=e30]:
+          - strong [ref=e31]: 执行预算 5 / 30
+          - strong [ref=e32]: Review 2 次
+        - paragraph [ref=e33]: 执行：已知 150 Tokens · 数据不完整 / 1.00s
+        - paragraph [ref=e34]: Review：已知 150 Tokens · 数据不完整 / 1.00s
+        - paragraph [ref=e35]: 总 Token：300（数据不完整）
+        - heading "最新用户输入" [level=3] [ref=e36]
+        - paragraph [ref=e37]: 补充第三份 PDF
+        - generic [ref=e38]: 任务完成与消息送达分别记录；下方投递节点反映实际发送状态。
+      - group [ref=e39]:
+        - generic "用户输入 · 2026/9/10 16:00:00 v1" [ref=e40] [cursor=pointer]:
+          - text: 用户输入 · 2026/9/10 16:00:00
+          - text: v1
+        - button "分析三个 PDF，汇总主要差异" [ref=e42] [cursor=pointer]
+      - group [ref=e43]:
+        - generic "Agent Run · 2026/9/10 16:00:00 执行结束 v1" [ref=e44] [cursor=pointer]:
+          - text: Agent Run · 2026/9/10 16:00:00
+          - generic [ref=e45]: 执行结束
+          - text: v1
+        - paragraph [ref=e46]: 历史版本；以状态事件确认结果是否被接纳。
+        - button "查看详情" [ref=e47] [cursor=pointer]
+        - generic [ref=e48]: 未向用户发送
+        - generic [ref=e49]:
+          - button "模型 · fixture · succeeded" [ref=e50] [cursor=pointer]
+          - button "读取 PDF · succeeded" [ref=e52] [cursor=pointer]
+      - group [ref=e53]:
+        - generic "独立 Review · 2026/9/10 16:00:00 成功 v2" [ref=e54] [cursor=pointer]:
+          - text: 独立 Review · 2026/9/10 16:00:00
+          - generic [ref=e55]: 成功
+          - text: v2
+        - button "查看详情" [ref=e56] [cursor=pointer]
+        - button "模型 · fixture · succeeded" [ref=e58] [cursor=pointer]
+      - group [ref=e59]:
+        - generic "Review 结论 · 2026/9/10 16:00:00" [ref=e60] [cursor=pointer]: Review 结论 · 2026/9/10 16:00:00
+        - button "查看详情" [ref=e62] [cursor=pointer]
+      - group [ref=e63]:
+        - generic "回复投递 · 2026/9/10 16:00:00 等待重试" [ref=e64] [cursor=pointer]:
+          - text: 回复投递 · 2026/9/10 16:00:00
+          - generic [ref=e65]: 等待重试
+        - button "查看详情" [ref=e66] [cursor=pointer]
+    - generic [ref=e67]:
+      - heading "回复投递" [level=2] [ref=e68]
+      - generic [ref=e69]:
+        - button "详情" [ref=e70] [cursor=pointer]
+        - button "请求 / 输入" [ref=e71] [cursor=pointer]
+        - button "原始记录" [ref=e72] [cursor=pointer]
+      - generic [ref=e73]:
+        - heading "当前状态" [level=3] [ref=e74]
+        - paragraph [ref=e75]: RETRY_WAIT
+        - heading "发送次数" [level=3] [ref=e76]
+        - paragraph [ref=e77]: "2"
+        - heading "发送错误" [level=3] [ref=e78]
+        - paragraph [ref=e79]: fixture transient error

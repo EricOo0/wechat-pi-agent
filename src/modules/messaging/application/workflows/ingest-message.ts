@@ -1,3 +1,4 @@
+import type { TaskManager } from "../../../tasks/index.js";
 import type { MessageStore } from "../../ports/message-store.js";
 import { noopTelemetry, type Telemetry } from "../../../observability/index.js";
 import type { InboundBatch } from "../../domain/inbound-message.js";
@@ -16,6 +17,7 @@ export class IngestMessage {
     private readonly senderPolicy: SenderPolicy,
     private readonly telemetry: Telemetry = noopTelemetry,
     private readonly permissions?: PermissionService,
+    private readonly tasks?: TaskManager,
   ) {}
 
   public execute(batch: InboundBatch): IngestMessageResult {
@@ -29,6 +31,7 @@ export class IngestMessage {
       const persisted = this.controlPlane.getPersistedMessage(message.accountId, message.channelMessageId);
       if (sessionId !== undefined && persisted !== undefined && this.senderPolicy.allows(persisted)) {
         this.permissions?.handleMessage(persisted, sessionId);
+        this.tasks?.handleMessage(persisted, sessionId);
         if (this.permissions && new CommandRouter().route(persisted.text).type === "new") {
           this.permissions.endSession(this.permissions.context(persisted, sessionId));
         }

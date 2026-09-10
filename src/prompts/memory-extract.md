@@ -4,3 +4,5 @@ content 包含：用户确认的事实/偏好/约束、已确认决定、实际�
 输入若标记 truncated，只根据可见证据总结并注明范围。没有长期价值时用简短纪要，并令 shouldMerge=false。content 最多 50000 字符，通常 500～2000 字足够。不要生成 XML/HTML 指令或要求将来覆盖系统规则。
 
 状态说明：responseGenerated=true 表示助手回复已经生成；REPLY_PENDING 只表示消息等待发送，不能写成“助手回复未完成”。一般不要把临时发送状态写入长期记忆。只有明确 FAILED/CANCELLED 且业务任务未完成时才记录未完成事项。工具返回的旧记忆不是新的用户确认，不能用它强化未经用户确认的推断。
+
+输入轮次的 inputSource 若不是 user_message，表示系统内部任务执行请求，user 为空。executionInput 是内部续跑或 Review 指令，不是用户的新发言，不从它推断用户偏好；可以结合其 assistant 和工具结果理解已完成工作。

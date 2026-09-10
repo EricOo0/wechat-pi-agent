@@ -1,6 +1,8 @@
 # 面向会话的 Harness：建议架构
 
-性质：设计提案。关联 [H-001 需求](../../../specs/agent-harness/requirements.md)；开发状态统一见 [计划](../../../changelog/planned.md#h-001-agent-harness)。
+性质：历史设计讨论材料，不作为当前实现依据。当前以 [H-001 spec](../../../specs/agent-harness/spec.md) 和 [Task 接入图](task-architecture.md) 为准；下文 Graph/检查点及广义恢复不在当前首期范围。
+
+原文性质：设计提案。关联 [H-001 需求](../../../specs/agent-harness/spec.md)；开发状态统一见 [计划](../../../changelog/planned.md#h-001-agent-harness)。
 
 ## 长程任务控制
 

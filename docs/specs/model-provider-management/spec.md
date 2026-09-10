@@ -7,7 +7,9 @@
   "status": "accepted",
   "lifecycle": "active",
   "affects": [],
-  "changes": [],
+  "changes": [
+    "H-001"
+  ],
   "effective": null
 }
 ---

@@ -7,7 +7,7 @@
 | 当前实现 | [2026-09-10 模块化与工作流](current/2026-09-10/README.md) | 本地已实现的当前结构，部署状态另记 |
 | 重构前基线 | [2026-09-09 系统说明](current/2026-09-09/current-system-2026-09-09.md) | 已实现结构及源码依据，非目标架构 |
 | 系统重构图示 | [图示与标签说明](proposals/system-refactor/README.md) | 配合 [R-001 spec](../specs/system-refactor/spec.md) 阅读 |
-| 后置 Harness 提案 | [Harness](proposals/agent-harness/design.md) | 尚未纳入当前重构；关联 [H-001](../specs/agent-harness/requirements.md) |
+| Task / Harness 扩展 | [Task 接入图](proposals/agent-harness/task-architecture.md) | 本地已实现；[当前运行边界](current/2026-09-10/task-runtime.md)，图示保留设计阶段标签 |
 | 历史图稿 | [归档索引](archive/README.md) | 保留旧分层图、草图和生成材料，不能作为当前规格 |
 
 ## 其他架构依据

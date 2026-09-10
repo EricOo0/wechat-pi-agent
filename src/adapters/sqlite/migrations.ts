@@ -203,4 +203,50 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
       CREATE TABLE provider_auth_operations(id TEXT PRIMARY KEY,provider_id TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,error TEXT,candidate_hash TEXT) STRICT;
       CREATE TABLE model_management_events(id INTEGER PRIMARY KEY,event_type TEXT NOT NULL,event_at TEXT NOT NULL,event_data TEXT NOT NULL) STRICT;`,
   },
+  {
+    version: 9,
+    sql: `CREATE TABLE tasks (
+      id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, conversation_id TEXT NOT NULL REFERENCES sessions(id),
+      goal TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL,
+      progress TEXT NOT NULL DEFAULT '', evidence_json TEXT NOT NULL DEFAULT '[]', wait_question TEXT, stop_reason TEXT,
+      react_limit INTEGER NOT NULL DEFAULT 30, react_used INTEGER NOT NULL DEFAULT 0, review_count INTEGER NOT NULL DEFAULT 0,
+      request_seq INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      CHECK(react_used>=0 AND react_limit>=react_used)
+    ) STRICT;
+    CREATE UNIQUE INDEX tasks_one_open ON tasks(conversation_id) WHERE status NOT IN ('COMPLETED','FAILED','CANCELLED');
+      CREATE TABLE turns_task_migration (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id),
+        inbox_id TEXT NOT NULL REFERENCES inbox(id),
+        trace_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('RECEIVED', 'QUEUED', 'RUNNING', 'REPLY_PENDING', 'SUCCEEDED', 'FAILED', 'DEAD_LETTER', 'CANCELLED')),
+        queued_at TEXT NOT NULL,
+        started_at TEXT,
+        completed_at TEXT,
+        final_response TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        lease_owner TEXT,
+        lease_expires_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+    INSERT INTO turns_task_migration(rowid,id,session_id,inbox_id,trace_id,run_id,status,queued_at,started_at,completed_at,final_response,error_code,error_message,lease_owner,lease_expires_at,created_at,updated_at) SELECT rowid,id,session_id,inbox_id,trace_id,run_id,status,queued_at,started_at,completed_at,final_response,error_code,error_message,lease_owner,lease_expires_at,created_at,updated_at FROM turns;
+    DROP TABLE turns;
+    ALTER TABLE turns_task_migration RENAME TO turns;
+    CREATE INDEX turns_claim_idx ON turns(status,queued_at);
+    CREATE INDEX turns_session_idx ON turns(session_id,queued_at);
+    ALTER TABLE turns ADD COLUMN task_id TEXT REFERENCES tasks(id);
+    ALTER TABLE turns ADD COLUMN task_revision INTEGER;
+    ALTER TABLE turns ADD COLUMN source TEXT NOT NULL DEFAULT 'user_message';
+    ALTER TABLE turns ADD COLUMN input_text TEXT;
+    UPDATE turns SET source='permission_continue' WHERE id IN (SELECT continuation_turn_id FROM permission_continuations);
+    CREATE UNIQUE INDEX turns_user_inbox_unique ON turns(inbox_id) WHERE source='user_message';
+    CREATE INDEX turns_task_idx ON turns(task_id);
+    CREATE TABLE task_inputs(task_id TEXT NOT NULL REFERENCES tasks(id),turn_id TEXT PRIMARY KEY REFERENCES turns(id),text TEXT NOT NULL,created_at TEXT NOT NULL,reply_to TEXT) STRICT;
+    CREATE TABLE task_events(id INTEGER PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),type TEXT NOT NULL,data_json TEXT NOT NULL,created_at TEXT NOT NULL) STRICT;
+    CREATE TABLE task_reviews(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),revision INTEGER NOT NULL,created_at TEXT NOT NULL,result_json TEXT) STRICT;
+    CREATE TABLE task_control_receipts(message_id TEXT PRIMARY KEY,reply TEXT NOT NULL,task_id TEXT REFERENCES tasks(id),action TEXT NOT NULL) STRICT;`,
+  },
 ];

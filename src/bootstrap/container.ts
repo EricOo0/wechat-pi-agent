@@ -1,3 +1,7 @@
+import { TaskRoutes } from "../entrypoints/admin-http/task-routes.js";
+import { TaskManager } from "../modules/tasks/index.js";
+import { PiTaskReviewer } from "../adapters/pi/pi-task-reviewer.js";
+import { DryRunTaskReviewer } from "../adapters/dry-run/dry-run-task-reviewer.js";
 import { runBackgroundLoops } from "./lifecycle.js";
 import { IdleSessionLoop } from "../workers/idle-session-loop.js";
 import { AgentRuntime } from "../runtime/agent/index.js";
@@ -104,7 +108,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
     ownerPrincipalId: principalId(accountId, allowedSender),
     protectedPaths: deniedPaths,
     workspaceBase: config.tools.sandboxRoot,
-    onChange: (subject) => { executor.revoke(subjectKey(subject)); liveGateway?.abortSubject(subject.principalId); },
+    onChange: (subject) => { executor.revoke(subjectKey(subject)); liveGateway?.abortSubject(subject.principalId); taskManager?.abortOwner(subjectKey(subject)); },
   });
   const channel: Channel = config.dryRun
     ? new DryRunChannel()
@@ -159,13 +163,15 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
     logger.info("Legacy TOOL_SHELL_ENABLED / TOOL_HTTP_* flags are ignored; authenticated user permission grants control all tools");
   }
 
+  const taskStore = control.enableTasks((message, sessionId) => subjectKey(permissions.context(message, sessionId).subject));
+  const taskManager = new TaskManager(taskStore, config.dryRun ? new DryRunTaskReviewer() : new PiTaskReviewer(runtime, models, gate), permissions);
   const senderPolicy = config.dryRun ? new AllowAllSendersPolicy() : new ExactSenderPolicy(allowedSender);
-  const ingest = new IngestMessage(control, senderPolicy, telemetry, permissions);
+  const ingest = new IngestMessage(control, senderPolicy, telemetry, permissions, taskManager);
   const ownerId = `worker_${randomUUID()}`;
   const endSession = new EndSession(control, permissions, id => liveGateway?.disposeSession(id), error => logger.warn({err:error}, "session permission cleanup deferred"));
   const expireSessions = new ExpireIdleSessions(control, endSession);
   const runtimeAgent = new AgentRuntime(agent);
-  const runNextTurn = new RunNextTurn(control, runtimeAgent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles, endSession, config.modelManagementEnabled ? models : undefined);
+  const runNextTurn = new RunNextTurn(control, runtimeAgent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles, endSession, config.modelManagementEnabled ? models : undefined, taskManager);
   const deliverReply = new DeliverReply(control, channel, { ownerId, leaseMs: 60_000 }, undefined, telemetry);
   const recover = new RecoverInterruptedWork(control);
   const memoryGenerator = config.dryRun ? {
@@ -180,6 +186,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   health.beat("poll"); health.beat("turn"); health.beat("outbox");
 
   const admin = new AdminServer({
+    taskRoutes: new TaskRoutes(taskManager, managementOwner, control),
     ...(config.modelManagementEnabled ? { modelRoutes: new ModelRoutes(models, authentication, managementOwner, () => modelSelections.events()) } : {}),
     host: config.adminHost,
     port: config.adminPort,

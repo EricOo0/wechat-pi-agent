@@ -1,3 +1,4 @@
+import type { TaskRoutes } from "./task-routes.js";
 import type { ModelRoutes } from "./model-routes.js";
 import type { MemoryJobRepository } from "../../modules/memory/index.js";
 import { memoryJobTrace, memoryJobDetails } from "../../modules/observability/index.js";
@@ -13,6 +14,7 @@ import { TRACE_PAGE_HTML } from "./trace-page.js";
 
 export interface AdminServerOptions {
   modelRoutes?: ModelRoutes;
+  taskRoutes?: TaskRoutes;
   memoryJobs?: MemoryJobRepository;
   host: string;
   port: number;
@@ -30,7 +32,7 @@ export class AdminServer {
 
   public constructor(private readonly options: AdminServerOptions) {
     this.server = createServer((request, response) => {
-      void (async () => { if (await this.options.modelRoutes?.handle(request, response)) return; await this.handle(request.url ?? "/", response); })().catch((error: unknown) => {
+      void (async () => { if (this.options.taskRoutes?.handle(request, response)) return; if (await this.options.modelRoutes?.handle(request, response)) return; await this.handle(request.url ?? "/", response); })().catch((error: unknown) => {
         this.options.logger.error({ err: error }, "admin request failed");
         this.json(response, 500, { error: "internal_error" });
       });
@@ -64,13 +66,14 @@ export class AdminServer {
       response.end();
       return;
     }
-    if (url.pathname === "/admin") {
+    if (url.pathname === "/admin" || url.pathname === "/admin/traces") {
       response.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
         "Content-Security-Policy": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'",
         "X-Content-Type-Options": "nosniff",
       });
-      response.end(this.options.modelRoutes ? TRACE_PAGE_HTML : TRACE_PAGE_HTML.replace('<a href="/admin/models" style="color:inherit;margin-right:16px">模型与账户</a>', ""));
+      const html = this.options.taskRoutes ? TRACE_PAGE_HTML.replace("<body>", '<body><a href="/admin/tasks" style="position:fixed;right:18px;bottom:18px;z-index:99;background:white;padding:8px">任务</a>') : TRACE_PAGE_HTML;
+      response.end(this.options.modelRoutes ? html : html.replace('<a href="/admin/models" style="color:inherit;margin-right:16px">模型与账户</a>', ""));
       return;
     }
     if (url.pathname === "/healthz") {

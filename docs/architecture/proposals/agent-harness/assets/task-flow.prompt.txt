@@ -1,0 +1,10 @@
+流程图内容约束（重绘用）：
+创建 Task → Manager 检查控制状态/预算 → 有预算时执行 Agent 一轮 ReAct并+1。
+执行结果三分支：continue返回预算；waiting进入HITL；request_completion直接进入Review，不再次受ReAct预算拦截。
+Review三分支：通过→Manager核对版本/控制→COMPLETED；有缺口→保存意见→预算检查；需要用户确认→同一个HITL等待框。
+HITL匹配答复且权限有效后回到预算检查，不重置计数。
+无预算→PAUSED；只有用户明确追加预算才能返回执行。
+使用A连接符表达返回Manager的路径，避免回路线交叉。申请完成不能连到用户答复；Review通过不能回到执行。
+同Task初始30轮；一轮是一次执行模型调用及工具批次，Review另计；第30轮可Review，失败后不自动执行31轮。
+白底、蓝色执行、紫色Review、橙色等待、绿色完成；清晰中文；标注设计讨论稿，非Graph或checkpoint实现。
+最终图是在首稿上用imagegen修正箭头得到，保留以上语义作为后续重绘依据。

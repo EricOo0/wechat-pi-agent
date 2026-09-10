@@ -1,4 +1,5 @@
 export const COMMANDS = [
+  { name: "task", summary: "查看和控制当前任务", usage: "/task status\n/task list\n/task pause\n/task cancel\n/task resume\n/task budget <追加轮数>", note: "新消息进入当前未关闭任务。初始 30 轮 ReAct；追加预算需明确轮数。" },
   { name: "provider", summary: "查看供应商和认证状态", usage: "/provider\n/provider all [页码]\n/provider <供应商> [page <页码>]\n/provider <供应商> <模型ID>", note: "只指定供应商时检查认证并展示模型；选定模型后才切换。" },
   { name: "model", summary: "查看或切换当前供应商的模型", usage: "/model [page <页码>]\n/model <模型ID>", note: "始终操作当前供应商。/models 是只读列表别名。" },
   { name: "auth", summary: "查看认证或发起本机登录", usage: "/auth\n/auth <供应商>\n/auth <供应商> login\n/auth <供应商> reauth", note: "登录或更换账户在运行 Agent 的电脑完成，不要向微信发送密钥。" },

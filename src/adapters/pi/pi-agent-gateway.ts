@@ -1,3 +1,4 @@
+import { TASK_EXECUTION_PROTOCOL } from "../../modules/tasks/index.js";
 import { ModelManagementError } from "../../modules/models/index.js";
 import type { ModelManagement } from "../../modules/models/index.js";
 import type { ProviderRequestGate } from "../../modules/models/index.js";
@@ -59,6 +60,7 @@ export interface PiAgentGatewayOptions {
 }
 
 interface SessionHandle {
+  taskError?: Error;
   session: AgentSession;
   manager: SessionManager;
   context: PermissionContext;
@@ -153,11 +155,12 @@ export class PiAgentGateway implements Agent {
       catch { throw new ModelManagementError("MODEL_AUTH_FAILED", "目标模型认证检查失败，请在本机检查登录；本轮未切换模型。"); }
     }
     handle.request = request;
+    delete handle.taskError;
     handle.selectedFiles.clear();
     request.onSessionReady?.(handle.manager.getSessionId(), handle.manager.getSessionFile());
     const permission = this.options.permissions.snapshot(handle.context);
     request.onInvocation?.({
-      systemPrompt: handle.session.systemPrompt,
+      systemPrompt: handle.session.systemPrompt + (request.task ? `\n\n${TASK_EXECUTION_PROTOCOL}` : ""),
       provider: handle.session.model?.provider ?? this.options.provider,
       modelId: handle.session.model?.id ?? this.options.modelId,
       skills: this.resourceLoader.getSkills().skills.map((skill) => ({
@@ -187,7 +190,10 @@ export class PiAgentGateway implements Agent {
       if (images.length > 0 && !handle.session.model?.input.includes("image")) {
         throw new Error(`Pi model does not support image input: ${handle.session.model?.provider}/${handle.session.model?.id}`);
       }
-      await handle.session.prompt(expanded.prompt + (request.files?.length ? `\n\nUser file library additions (metadata only; call file_use to read originals): ${JSON.stringify(request.files)}` : ""), { expandPromptTemplates: false, ...(images.length === 0 ? {} : { images }) });
+      const taskContext = request.task ? `\n\nTask context (application data): ${JSON.stringify(request.task)}` : "";
+      await handle.session.prompt(expanded.prompt + taskContext + (request.files?.length ? `\n\nUser file library additions (metadata only; call file_use to read originals): ${JSON.stringify(request.files)}` : ""), { expandPromptTemplates: false, ...(images.length === 0 ? {} : { images }) });
+      const taskError = this.sessions.get(request.session.id)?.taskError;
+      if (taskError) throw taskError;
       const latest = handle.session.agent.state.messages.at(-1);
       if (latest?.role === "assistant" && (latest.stopReason === "error" || latest.stopReason === "aborted")) {
         if (handle.selectedFiles.size) throw new FileInputError("FILE_MODEL_FAILED", "文件分析未完成，模型接口返回错误；原文件已保存，可以稍后重试。");
@@ -203,6 +209,8 @@ export class PiAgentGateway implements Agent {
         ...(piSessionFile === undefined ? {} : { piSessionFile }),
       };
     } catch (error) {
+      const taskError = this.sessions.get(request.session.id)?.taskError;
+      if (taskError) throw taskError;
       if (handle.selectedFiles.size && !request.signal?.aborted) {
         const safe = error instanceof FileInputError ? error : new FileInputError("FILE_MODEL_FAILED", "文件分析未完成，模型接口返回错误；原文件已保存，可以稍后重试。");
         throw safe;
@@ -211,6 +219,7 @@ export class PiAgentGateway implements Agent {
     } finally {
       handle.selectedFiles.clear();
       delete handle.request;
+      delete handle.taskError;
       request.signal?.removeEventListener("abort", onAbort);
       unsubscribe();
     }
@@ -294,10 +303,18 @@ export class PiAgentGateway implements Agent {
       throw new Error(`Pi tool policy violation: unexpected or unmanaged tools (${[...unexpected, ...unmanaged.map((tool) => tool.name)].join(", ")})`);
     }
     const previousStream = session.agent.streamFunction;
-    session.agent.streamFunction = traceModelCalls(async (...args) => {
+    const trackedStream = traceModelCalls(async (...args) => {
       const stream = await previousStream(...args);
       return selectedFiles.size ? redactFileErrors(stream) : stream;
     }, event => this.sessions.get(request.session.id)?.request?.onEvent?.(event));
+    session.agent.streamFunction = async (currentModel, context, streamOptions) => {
+      const active = this.sessions.get(request.session.id);
+      try { active?.request?.beforeModelCall?.(); }
+      catch (error) { if (active) active.taskError = error instanceof Error ? error : new Error(String(error)); throw error; }
+      const taskMode = active?.request?.task;
+      const finalContext = taskMode ? { ...context, systemPrompt: `${context.systemPrompt ?? ""}\n\n${TASK_EXECUTION_PROTOCOL}` } : context;
+      return trackedStream(currentModel, finalContext, { ...streamOptions, ...(taskMode ? { maxRetries: 0 } : {}) });
+    };
     const previousPayload = session.agent.onPayload;
     session.agent.onPayload = async (payload, currentModel) => {
       const base = await previousPayload?.(payload, currentModel) ?? payload;

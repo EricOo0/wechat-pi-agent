@@ -34,3 +34,5 @@ flowchart TB
 后台循环由 workers 驱动，bootstrap/lifecycle.ts 协调停止领取、30 秒收尾和取消。模型管理、图片/PDF、上下文回执、权限、记忆、Trace/Admin 均保留。
 
 [重构前基线](../2026-09-09/current-system-2026-09-09.md) 和旧 PNG 仍供追溯，不作为当前精确模块落点。
+
+H-001 接入后的当前执行主链、事务与控制边界见 [Task 运行边界](task-runtime.md)；本页重构基线图不包含后续 Task 节点。

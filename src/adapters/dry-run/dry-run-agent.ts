@@ -8,7 +8,9 @@ export class DryRunAgent implements Agent {
 
   public runTurn(request: AgentRunRequest): Promise<AgentRunResult> {
     request.onEvent?.({ type: "agent_start", at: new Date() });
-    const text = `[dry-run] ${request.prompt}`;
+    request.beforeModelCall?.();
+    const reply = `[dry-run] ${request.prompt}`;
+    const text = request.task ? JSON.stringify({ disposition: "request_completion", progress: "Dry-run reply prepared", remaining: "", evidence: ["dry-run"], result: reply }) : reply;
     request.onEvent?.({ type: "agent_end", at: new Date(), data: { willRetry: false } });
     return Promise.resolve({ text, piSessionId: `dry_${request.session.id}` });
   }

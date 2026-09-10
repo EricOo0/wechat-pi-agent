@@ -64,7 +64,7 @@ deviates 在所有交付阶段均强制阻断；接受设计变化时先修改�
 
 成功或允许阶段提交的核对报告由脚本生成到 docs/specs/<topic>/reviews/<暂存指纹>.md，并维护 reviews/README.md；spec 顶部只自动插入该索引链接。报告保存 HEAD、暂存/规则指纹和插入导航前的规格内容 SHA256；与最终预计暂存树匹配的缓存才可放行。代码、规格或检查规则变化会重新核对。
 
-失败报告保存在 Git 私有目录 project-workflow/spec-review.md 和 spec-review.json，供当前开发任务定位；失败时不改 spec、不执行文档同步。后置文档同步不能改写 spec 正文或 reviews；仅当核对给出 implementation_ready=true 且无 missing/deviates 时，允许将 implementing 晋升为 implemented，其他字段及正文必须不变，地图由脚本同步；如需改变要求，应在开发任务中明确变更并重新核对，不能自动用现有代码覆盖规格。
+失败报告保存在 Git 私有目录 project-workflow/spec-review.md 和 spec-review.json，供当前开发任务定位；失败时不改 spec、不执行文档同步。后置文档同步可以修改 spec 正文、索引、导航和架构说明，不以内容冻结拒绝正常同步；需要记录设计与实现差异及原因，保留前置审查证据。晋升 implemented 仍需 implementation_ready=true 和本地验证依据。修改后停止提交，由当前开发任务核对、暂存后继续；文件范围、未暂存改动保护和检查失败阻断保留。
 
 缓存绑定 HEAD、暂存文件模式/对象 ID、检查器与 Skill 版本。子进程禁止递归提交，锁防并发重复调用；超时、认证失败和无效输出明确失败，不自动放行。不截断过大的 diff 后假称审查完成：超过 1 MiB 要求拆分提交。package-lock 不作为语义 diff，但仍包含在快照与缓存标识中。
 
@@ -86,8 +86,8 @@ Hook 不读取或解析不稳定的会话 transcript。无初始化记录的新�
 - W-001-4：缺失反向关系、重复 ID、生效证据缺失、地图过期与断链被发现。
 - W-001-5：Stop 对普通未改动任务不追加轮次；开发任务最多兜底一次；ack 后直接结束；不覆盖其他全局 Hook。
 - W-001-6：失败/超时/递归提交不放行；错误不泄露原始认证日志。安装不覆盖既有 hooksPath 或原生 pre-commit。
-- W-001-7：前置核对失败时不调用同步；completion 的遗漏/偏差/验证缺口阻断；incremental 的缺口保存在版本化报告。后置同步无法改写要求或报告；改动使旧核对失效。
-- W-001-8：实现与本地验证齐备后可在提交前晋升 implemented；只修改 status 并同步地图，无前置就绪依据或夹带要求修改则拒绝；不要求或推断发布状态。
+- W-001-7：前置核对失败时不调用同步；completion 的遗漏/偏差/验证缺口阻断；incremental 的缺口保存在版本化报告。后置同步可更新文档内容，保留前置审查证据；修改后停止提交并展示差异。
+- W-001-8：实现与本地验证齐备后可在提交前晋升 implemented；同步状态与文档内容，无前置就绪依据时不得晋升；不要求或推断发布状态。
 
 适用条件：Python 3.10+、Git、可运行且已登录的 Codex CLI。当前本机版本在交付记录中登记。安装及故障处理见 [操作说明](../../runbook/project-workflow.md)，验证证据见 changelog。
 
@@ -101,3 +101,5 @@ implemented 表示整份规格的代码实现完成且本地验证通过；局�
 核对报告的 stage 与实现状态分别表达范围：整份交付仍有明确外部验收项时报告可为 incremental，但只有本地实现范围全部满足才能 implementation_ready=true。不能将未完成代码或本地验证缺口当作外部验收。
 
 验证范围结构化为 verification_scope=local/external。实现就绪且未声明 effective 时，completion 报告允许明确的 external/unverified 待验收；本地缺口仍阻断完成，任何阶段本地 unverified 都不得晋升 implemented。effective 的外部未验证仍阻断。此规则区分实现完成与发布，不允许重新标注本地缺口绕过验证。
+
+文档内容同步策略与最新验证：[核对记录](reviews/document-sync.md)。

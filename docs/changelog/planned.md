@@ -1,5 +1,6 @@
 # 下一步与当前状态
 
+
 ## W-001 项目自动维护
 
 - 四个 Skill、Git pre-commit 与 Codex 收尾脚本已实现；提交前先核对规格实现，再同步文档；验证结果见月度记录。
@@ -17,12 +18,13 @@
 
 ## H-001 Agent Harness
 
-- 优先顺序：系统架构重构完成后。
-- 状态：后置，范围仍待澄清。
-- [需求草案](../specs/agent-harness/requirements.md) · [技术提案](../architecture/proposals/agent-harness/design.md)
-- 已确认：Harness 为后续扩展方向，当前先完成系统结构重构。
-- 待明确：首期真实场景、范围、预算与停滞规则、验收条件。
-- 下一动作：选择真实任务，确认首期边界后拆分可独立验收的阶段。
-- 尚未开始功能实施；现有图中的模块属于候选设计。
+- 状态：implemented。本地实现及 146 个测试、架构检查、Lint、类型检查、构建通过；尚未提交、推送或部署。
+- 普通聊天统一 Task；同会话最多一个未关闭 Task；最终 JSON、完成申请 Review、累计 30 轮与明确追加预算已接入。
+- 暂停/取消、权限续跑、版本过期保护、文件 HITL、管理查询和 SQLite migration 9 已实现。
+- [规格与核对](../specs/agent-harness/spec.md) · [证据](../specs/agent-harness/evidence/README.md) · [操作](../runbook/tasks.md)。
+- 下一步：真实微信、真实模型 JSON/Review 和 PDF 输入验收；部署前备份数据库。未引入 Graph/checkpoint/跨进程续跑。
 
-范围确定后再建立阶段计划，不提前把所有设计模块变成必做任务。
+## H-002 Task Trace
+
+- implemented：统一 Task 管理视图及聚合查询完成，148 个测试及浏览器合成数据验证通过。
+- [规格与核对](../specs/task-trace/spec.md)。真实运行验收待完成，未提交、推送或部署。

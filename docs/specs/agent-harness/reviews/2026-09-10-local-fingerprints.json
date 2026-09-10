@@ -1,0 +1,8 @@
+{
+  "scope": "local working tree; not a staged pre-commit review",
+  "spec_sha256": {
+    "docs/specs/agent-harness/spec.md": "9521811452050ccca4296e0f0a57d7e319f3e266de46db960e9e501241448e17",
+    "docs/specs/system-refactor/spec.md": "8b921dec7120df42ad667eeec76690ebcb854d3ceb9c918f1176cab1c4b5fd6d",
+    "docs/specs/model-provider-management/spec.md": "aff1037f409e0144096307c53ef915ecc803233a9553a11f40a7e3861fbf2888"
+  }
+}

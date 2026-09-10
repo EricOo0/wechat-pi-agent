@@ -1,3 +1,4 @@
+import { TaskControlError } from "../../src/modules/tasks/index.js";
 import { mkdtemp, rm, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -27,12 +28,12 @@ describe("model switching through real Pi AgentSession", () => {
       const permissions = new PermissionService(permissionRepo, { executorId: "test", workspaceId: root, ownerPrincipalId: principalId("bot", "owner"), protectedPaths: [] });
       const message = { id: "in-1", accountId: "bot", peerId: "owner", senderId: "owner", channelMessageId: "one", text: "Hello", receivedAt: new Date() };
       const context = permissions.context(message, "session", "turn-1"); const owner = subjectKey(context.subject);
-      const calls: Array<{ provider: string; context: Context }> = []; const switchDuringFirstCall = async () => { await models.select(owner, "test-b", "model", 0); };
+      const calls: Array<{ provider: string; context: Context; maxRetries: number | undefined }> = []; const switchDuringFirstCall = async () => { await models.select(owner, "test-b", "model", 0); };
       for (const providerId of ["test-a", "test-b"]) {
         const template = runtime.getModels("openai-codex")[0]!;
         const model = { ...template, id: "model", provider: providerId };
-        const send: Provider["streamSimple"] = (m, c) => {
-          calls.push({ provider: m.provider, context: c });
+        const send: Provider["streamSimple"] = (m, c, options) => {
+          calls.push({ provider: m.provider, context: c, maxRetries: options?.maxRetries });
           const tool = calls.length === 1; const output: AssistantMessage = { role: "assistant", api: m.api, provider: m.provider, model: m.id,
             content: tool ? [{ type: "toolCall", id: "permission-check", name: "permissions_get", arguments: {} }] : [{ type: "text", text: `reply:${m.provider}` }],
             stopReason: tool ? "toolUse" : "stop", timestamp: Date.now(), usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
@@ -48,11 +49,19 @@ describe("model switching through real Pi AgentSession", () => {
         executor: { execute: () => Promise.reject(new Error("Unexpected execution")), close() {}, revoke() {} }, deniedPaths: [], protectedWritePaths: [], deniedNetworkPorts: [] });
       const session = { id: "session", key: "weixin:bot:owner", accountId: "bot", peerId: "owner", status: "ACTIVE" as const, createdAt: new Date(), updatedAt: new Date() };
       const traces: AgentInvocationTrace[] = [];
-      const first = await gateway.runTurn({ session, prompt: "hello", permissionContext: context, onInvocation: (t) => traces.push(t) });
+      let counted = 0;
+      const first = await gateway.runTurn({ session, prompt: "hello", beforeModelCall: () => { counted++; }, permissionContext: context, onInvocation: (t) => traces.push(t) });
+      expect(counted).toBe(2);
       expect(first.text).toBe("reply:test-a"); expect(calls.map((v) => v.provider)).toEqual(["test-a", "test-a"]);
-      const second = await gateway.runTurn({ session, prompt: "continue", permissionContext: { ...context, taskTurnId: "turn-2" }, onInvocation: (t) => traces.push(t) });
+      const second = await gateway.runTurn({ session, prompt: "continue", task: { task: { id: "task", ownerId: owner, conversationId: session.id, goal: "fixture", revision: 1, status: "RUNNING", progress: "", evidence: [], reactLimit: 30, reactUsed: 2, reviewCount: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, inputs: [] }, permissionContext: { ...context, taskTurnId: "turn-2" }, onInvocation: (t) => traces.push(t) });
       expect(second.text).toBe("reply:test-b"); expect(traces.map((t) => t.provider)).toEqual(["test-a", "test-b"]);
       expect(JSON.stringify(calls.at(-1)?.context)).toContain("reply:test-a");
+      expect(calls.at(-1)?.maxRetries).toBe(0);
+      expect(calls.at(-1)?.context.systemPrompt).toContain("FINAL response must be one JSON object");
+      const callCount = calls.length;
+      await expect(gateway.runTurn({ session, prompt: "blocked by Task budget", permissionContext: { ...context, taskTurnId: "turn-3" },
+        beforeModelCall: () => { throw new TaskControlError("TASK_BUDGET", "No rounds left"); } })).rejects.toThrow("No rounds left");
+      expect(calls.length).toBe(callCount);
     } finally { gateway?.dispose(); repository.close(); permissionRepo.close(); control.close(); await rm(root, { recursive: true, force: true }); }
   });
 });

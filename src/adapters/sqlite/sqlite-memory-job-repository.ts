@@ -38,10 +38,10 @@ export class SqliteMemoryJobRepository implements MemoryJobRepository {
     this.db.prepare("UPDATE memory_jobs SET worker_id=NULL,lease_until=NULL,next_attempt_at=?,error=? WHERE id=? AND worker_id=?").run(new Date(Date.now()+Math.min(3_600_000,5000*2**Math.min(job.attempts,9))).toISOString(),error.slice(0,1000),job.id,job.workerId??"");
   }
   public source(job: MemoryJob): SessionMemorySource {
-    const rows=this.db.prepare(`SELECT t.id,t.status,t.final_response,t.error_code,i.text,i.files_json FROM turns t JOIN inbox i ON i.id=t.inbox_id
+    const rows=this.db.prepare(`SELECT t.id,t.status,t.source,t.input_text,t.final_response,t.error_code,i.text,i.files_json FROM turns t JOIN inbox i ON i.id=t.inbox_id
       WHERE t.session_id=? ORDER BY t.rowid DESC LIMIT 301`).all(job.sessionId);
     let truncated=rows.length>300;
-    const turns=rows.slice(0,300).reverse().filter(row=>!/^\/(new|status|permissions)\b|^(确认授权|开启全部权限|恢复基本权限)/u.test(String(row.text).trim())).map(row=>{
+    const turns=rows.slice(0,300).reverse().filter(row=>row.source !== 'user_message' || !/^\/(new|status|permissions|task)\b|^(确认授权|开启全部权限|恢复基本权限)/u.test(String(row.text).trim())).map(row=>{
       if (String(row.text).length>8000 || String(row.final_response??'').length>12000) truncated=true;
       let files=this.db.prepare("SELECT id,name,status FROM user_files WHERE owner_id=? AND message_id=(SELECT i.channel_message_id FROM inbox i JOIN turns t ON t.inbox_id=i.id WHERE t.id=?)").all(job.ownerId,String(row.id));
       if(!files.length && row.files_json) {
@@ -49,7 +49,7 @@ export class SqliteMemoryJobRepository implements MemoryJobRepository {
         files=refs.flatMap(ref=>typeof ref.name==='string'?[{name:ref.name,status:'not_saved'}]:[]);
       }
       const tools=this.db.prepare("SELECT substr(event_data_json,1,4000) AS preview,length(event_data_json) AS length FROM steps WHERE turn_id=? AND event_type='tool_execution_end' ORDER BY ordinal LIMIT 10").all(String(row.id)).map(e=>({ preview: String(e.preview), truncated: Number(e.length)>4000 }));
-      return {turnId:String(row.id),user:String(row.text).slice(0,8000),assistant:String(row.final_response??'').slice(0,12000),status:String(row.status),responseGenerated:row.final_response!==null,...(row.error_code?{errorCode:String(row.error_code)}:{}),files,tools};
+      return {inputSource:String(row.source),...(row.source !== "user_message" ? {executionInput:String(row.input_text??"").slice(0,8000)} : {}),turnId:String(row.id),user:row.source === "user_message" ? String(row.text).slice(0,8000) : "",assistant:String(row.final_response??'').slice(0,12000),status:String(row.status),responseGenerated:row.final_response!==null,...(row.error_code?{errorCode:String(row.error_code)}:{}),files,tools};
     });
     const result={sessionId:job.sessionId,endedAt:job.endedAt,reason:job.reason,turns,truncated};
     while(JSON.stringify(result).length>160_000 && result.turns.length>1){result.turns.shift();result.truncated=true;}

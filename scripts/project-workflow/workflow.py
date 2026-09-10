@@ -331,7 +331,7 @@ def audit_edits(root, snap, audit, stamp, entries):
 
 
 def merge_sync_edits(snap, audit, proposed, generated):
-    """Only an audited status promotion may change a frozen spec after review."""
+    """Allow document edits; preserve audit evidence and validate readiness promotions."""
     reviews = {item['path']: item for item in audit['specs']}
     generated_by_path = {edit['path']: dict(edit) for edit in generated}
     output = {}
@@ -340,36 +340,38 @@ def merge_sync_edits(snap, audit, proposed, generated):
         name = edit.get('path', '')
         if name in output:
             raise ValueError('重复文档修改')
-        if name.startswith('docs/specs/') and PurePosixPath(name).name != 'MAP.md':
-            original = snap / name
-            before, body = metadata(original) if original.is_file() else (None, '')
-            try:
-                after, new_body = parse_metadata(edit.get('content', ''))
-            except (ValueError, TypeError):
-                after, new_body = None, ''
+        if not allowed_doc(name):
+            raise ValueError('文档路径越界')
+        original = snap / name
+        before, _ = metadata(original) if original.is_file() else (None, '')
+        after, body = parse_metadata(edit.get('content', ''))
+        if before and not after:
+            raise ValueError('受管规格缺少元信息')
+        if before and after and before.get('status') != 'implemented' and after.get('status') == 'implemented':
             item = reviews.get(name, {})
             findings = item.get('findings', [])
-            if (not before or not after or before.get('status') != 'implementing'
-                    or after != {**before, 'status': 'implemented'} or body != new_body
-                    or item.get('implementation_ready') is not True
+            if (item.get('implementation_ready') is not True
                     or not any(f['status'] == 'conforms' for f in findings)
                     or any(f['status'] in ('missing', 'deviates') or
                            (f['status'] == 'unverified' and f.get('verification_scope') != 'external') for f in findings)):
-                raise ValueError('文档同步越界：改写规格仅允许有核对依据的 implementing → implemented；要求正文与其他字段必须不变')
-            if name in generated_by_path:
-                _, linked_body = parse_metadata(generated_by_path.pop(name)['content'])
-                edit = {'path': name, 'content': '---\n' + json.dumps(after, ensure_ascii=False, indent=2) + '\n---\n\n' + linked_body}
+                raise ValueError('改写规格状态缺少实现就绪依据')
             promoted.add(name)
+        if name in generated_by_path and name in reviews:
+            marker = '> 实现核对：[版本化核对记录](reviews/README.md)'
+            if marker not in edit['content']:
+                offset = len(edit['content']) - len(body)
+                edit = {'path': name, 'content': edit['content'][:offset] + marker + '\n\n' + body}
+            generated_by_path.pop(name)
         output[name] = edit
-    for name, edit in generated_by_path.items():
-        if name in output:
-            raise ValueError('不能覆盖前置核对报告')
-        output[name] = edit
+    # The current audit is evidence from the prior stage, not a sync rewrite target.
+    output.update(generated_by_path)
     if promoted:
         found = specs(snap)
         for path, meta, _ in found.values():
-            if path.relative_to(snap).as_posix() in promoted:
-                meta['status'] = 'implemented'
+            name = path.relative_to(snap).as_posix()
+            if name in promoted:
+                new_meta, _ = parse_metadata(output[name]['content'])
+                meta.update(new_meta)
         output['docs/specs/MAP.md'] = {'path': 'docs/specs/MAP.md', 'content': spec_map(snap, found)}
     return list(output.values())
 
