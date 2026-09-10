@@ -4,16 +4,16 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore, createAssistantMessageEventStream, type AssistantMessage, type Provider, type Context } from "@earendil-works/pi-ai";
-import { PiAgentGateway } from "../../src/adapters/outbound/pi/pi-agent-gateway.js";
-import { SqliteControlPlane } from "../../src/adapters/outbound/sqlite/sqlite-control-plane.js";
-import { SqlitePermissionRepository } from "../../src/adapters/outbound/sqlite/sqlite-permission-repository.js";
-import { SqliteModelSelectionRepository } from "../../src/adapters/outbound/sqlite/sqlite-model-selection-repository.js";
-import { PermissionService } from "../../src/application/services/permission-service.js";
-import { subjectKey, principalId } from "../../src/domain/policy/permissions.js";
-import { ModelManagement } from "../../src/application/use-cases/select-model.js";
-import { PiModelCatalog } from "../../src/adapters/outbound/pi/pi-model-catalog.js";
-import { ProviderRequestGate } from "../../src/adapters/outbound/pi/provider-request-gate.js";
-import type { AgentInvocationTrace } from "../../src/application/interfaces/agent.js";
+import { PiAgentGateway } from "../../src/adapters/pi/pi-agent-gateway.js";
+import { SqliteControlPlane } from "../../src/adapters/sqlite/sqlite-control-plane.js";
+import { SqlitePermissionRepository } from "../../src/adapters/sqlite/sqlite-permission-repository.js";
+import { SqliteModelSelectionRepository } from "../../src/adapters/sqlite/sqlite-model-selection-repository.js";
+import { PermissionService } from "../../src/modules/permissions/application/permission-service.js";
+import { subjectKey, principalId } from "../../src/modules/permissions/domain/permissions.js";
+import { ModelManagement } from "../../src/modules/models/application/select-model.js";
+import { PiModelCatalog } from "../../src/adapters/models/pi-model-catalog.js";
+import { ProviderRequestGate } from "../../src/modules/models/application/provider-request-gate.js";
+import type { AgentInvocationTrace } from "../../src/runtime/agent/ports/agent.js";
 
 describe("model switching through real Pi AgentSession", () => {
   it("keeps a running tool loop on its model and switches the cached session on the next turn", async () => {

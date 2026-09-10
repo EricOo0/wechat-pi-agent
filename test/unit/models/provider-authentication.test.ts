@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { SqliteControlPlane } from "../../../src/adapters/outbound/sqlite/sqlite-control-plane.js";
-import { SqliteModelSelectionRepository } from "../../../src/adapters/outbound/sqlite/sqlite-model-selection-repository.js";
-import { PiProviderAuthentication } from "../../../src/adapters/outbound/pi/pi-provider-authentication.js";
-import { ProviderRequestGate } from "../../../src/adapters/outbound/pi/provider-request-gate.js";
-import { openPiCredentialStore } from "../../../src/adapters/outbound/pi/staged-credential-store.js";
+import { SqliteControlPlane } from "../../../src/adapters/sqlite/sqlite-control-plane.js";
+import { SqliteModelSelectionRepository } from "../../../src/adapters/sqlite/sqlite-model-selection-repository.js";
+import { PiProviderAuthentication } from "../../../src/adapters/models/pi-provider-authentication.js";
+import { ProviderRequestGate } from "../../../src/modules/models/application/provider-request-gate.js";
+import { openPiCredentialStore } from "../../../src/adapters/models/staged-credential-store.js";
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const fn of cleanup.splice(0)) await fn(); });
 async function setup() {

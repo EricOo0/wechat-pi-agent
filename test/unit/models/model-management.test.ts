@@ -2,11 +2,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { SqliteControlPlane } from "../../../src/adapters/outbound/sqlite/sqlite-control-plane.js";
-import { SqliteModelSelectionRepository } from "../../../src/adapters/outbound/sqlite/sqlite-model-selection-repository.js";
-import { ModelManagement } from "../../../src/application/use-cases/select-model.js";
-import { CommandRouter } from "../../../src/application/services/command-router.js";
-import { ProviderRequestGate } from "../../../src/adapters/outbound/pi/provider-request-gate.js";
+import { SqliteControlPlane } from "../../../src/adapters/sqlite/sqlite-control-plane.js";
+import { SqliteModelSelectionRepository } from "../../../src/adapters/sqlite/sqlite-model-selection-repository.js";
+import { ModelManagement } from "../../../src/modules/models/application/select-model.js";
+import { CommandRouter } from "../../../src/modules/messaging/application/command-router.js";
+import { ProviderRequestGate } from "../../../src/modules/models/application/provider-request-gate.js";
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const fn of cleanup.splice(0)) await fn(); });
 async function setup() {

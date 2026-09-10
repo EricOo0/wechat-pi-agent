@@ -4,12 +4,12 @@ import { join } from "node:path";
 import { Script } from "node:vm";
 import pino from "pino";
 import { afterEach, describe, expect, it } from "vitest";
-import { AdminServer } from "../../src/adapters/inbound/admin-http/server.js";
-import { RuntimeHealth } from "../../src/adapters/inbound/admin-http/runtime-health.js";
-import { DryRunChannel } from "../../src/adapters/outbound/ilink/dry-run-channel.js";
-import { PrometheusTelemetry } from "../../src/adapters/outbound/observability/metrics.js";
-import { DryRunAgent } from "../../src/adapters/outbound/pi/dry-run-agent.js";
-import { SqliteControlPlane } from "../../src/adapters/outbound/sqlite/sqlite-control-plane.js";
+import { AdminServer } from "../../src/entrypoints/admin-http/server.js";
+import { RuntimeHealth } from "../../src/modules/observability/application/runtime-health.js";
+import { DryRunChannel } from "../../src/adapters/dry-run/dry-run-channel.js";
+import { PrometheusTelemetry } from "../../src/adapters/telemetry/metrics.js";
+import { DryRunAgent } from "../../src/adapters/dry-run/dry-run-agent.js";
+import { SqliteControlPlane } from "../../src/adapters/sqlite/sqlite-control-plane.js";
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {

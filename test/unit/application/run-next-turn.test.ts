@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Agent, AgentRunRequest } from "../../../src/application/interfaces/agent.js";
-import type { Channel } from "../../../src/application/interfaces/channel.js";
-import { ReplyChunker } from "../../../src/application/services/reply-chunker.js";
-import { RunNextTurn } from "../../../src/application/use-cases/run-next-turn.js";
+import type { Agent, AgentRunRequest } from "../../../src/runtime/agent/ports/agent.js";
+import type { Channel } from "../../../src/modules/messaging/ports/channel.js";
+import { ReplyChunker } from "../../../src/modules/messaging/domain/reply-chunker.js";
+import { RunNextTurn } from "../../../src/modules/turns/application/workflows/run-next-turn.js";
 import { claimedTurn, controlPlane, now } from "./helpers.js";
 
 function channel(setTyping: Channel["setTyping"] = vi.fn(() => Promise.resolve())): Channel {

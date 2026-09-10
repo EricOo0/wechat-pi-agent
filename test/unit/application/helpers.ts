@@ -1,8 +1,8 @@
 import { vi } from "vitest";
-import type { ControlPlane } from "../../../src/application/interfaces/control-plane.js";
-import type { ClaimedTurn } from "../../../src/domain/execution/turn.js";
-import type { ClaimedOutbox } from "../../../src/domain/delivery/outbox-message.js";
-import type { InboundBatch, InboundMessage } from "../../../src/domain/messaging/inbound-message.js";
+import type { ControlPlane } from "../../../src/adapters/sqlite/control-plane.js";
+import type { ClaimedTurn } from "../../../src/modules/turns/domain/turn.js";
+import type { ClaimedOutbox } from "../../../src/modules/messaging/domain/outbox-message.js";
+import type { InboundBatch, InboundMessage } from "../../../src/modules/messaging/domain/inbound-message.js";
 
 export const now = new Date("2025-01-02T03:04:05.000Z");
 

@@ -1,58 +1,60 @@
+import { runBackgroundLoops } from "./lifecycle.js";
+import { IdleSessionLoop } from "../workers/idle-session-loop.js";
+import { AgentRuntime } from "../runtime/agent/index.js";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { ModelManagement } from "../application/use-cases/select-model.js";
-import { SqliteModelSelectionRepository } from "../adapters/outbound/sqlite/sqlite-model-selection-repository.js";
-import { PiModelCatalog } from "../adapters/outbound/pi/pi-model-catalog.js";
-import { PiProviderAuthentication } from "../adapters/outbound/pi/pi-provider-authentication.js";
-import { ProviderRequestGate } from "../adapters/outbound/pi/provider-request-gate.js";
-import { openPiCredentialStore } from "../adapters/outbound/pi/staged-credential-store.js";
-import { ModelRoutes } from "../adapters/inbound/admin-http/model-routes.js";
-import { MarkdownMemoryStore } from "../adapters/outbound/filesystem/markdown-memory-store.js";
-import { SqliteMemoryJobRepository } from "../adapters/outbound/sqlite/sqlite-memory-job-repository.js";
-import { PiMemoryGenerator } from "../adapters/outbound/pi/pi-memory-generator.js";
-import { UserMemoryService } from "../application/services/user-memory-service.js";
-import { EndSession } from "../application/use-cases/end-session.js";
-import { ExpireIdleSessions } from "../application/use-cases/expire-idle-sessions.js";
-import { GenerateSessionMemory } from "../application/use-cases/generate-session-memory.js";
-import { MemoryWorkerLoop } from "../application/use-cases/memory-worker-loop.js";
-import { sleep } from "../shared/sleep.js";
-import { SqliteUserFileRepository } from "../adapters/outbound/sqlite/sqlite-user-file-repository.js";
-import { LocalFileStorage } from "../adapters/outbound/filesystem/local-file-storage.js";
-import { ILinkFileDownloader } from "../adapters/outbound/ilink/ilink-file-downloader.js";
-import { SaveInboundFiles } from "../application/use-cases/save-inbound-files.js";
+import { ModelManagement } from "../modules/models/index.js";
+import { SqliteModelSelectionRepository } from "../adapters/sqlite/sqlite-model-selection-repository.js";
+import { PiModelCatalog } from "../adapters/models/pi-model-catalog.js";
+import { PiProviderAuthentication } from "../adapters/models/pi-provider-authentication.js";
+import { ProviderRequestGate } from "../modules/models/index.js";
+import { openPiCredentialStore } from "../adapters/models/staged-credential-store.js";
+import { ModelRoutes } from "../entrypoints/admin-http/model-routes.js";
+import { MarkdownMemoryStore } from "../adapters/filesystem/markdown-memory-store.js";
+import { SqliteMemoryJobRepository } from "../adapters/sqlite/sqlite-memory-job-repository.js";
+import { PiMemoryGenerator } from "../adapters/pi/pi-memory-generator.js";
+import { UserMemoryService } from "../modules/memory/index.js";
+import { EndSession } from "../modules/conversation/index.js";
+import { ExpireIdleSessions } from "../modules/conversation/index.js";
+import { GenerateSessionMemory } from "../modules/memory/index.js";
+import { MemoryWorkerLoop } from "../workers/memory-worker-loop.js";
+import { SqliteUserFileRepository } from "../adapters/sqlite/sqlite-user-file-repository.js";
+import { LocalFileStorage } from "../adapters/filesystem/local-file-storage.js";
+import { ILinkFileDownloader } from "../adapters/ilink/ilink-file-downloader.js";
+import { SaveInboundFiles } from "../modules/artifacts/index.js";
 import { mkdir } from "node:fs/promises";
 import { realpathSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
-import type { Agent } from "../application/interfaces/agent.js";
-import type { Channel } from "../application/interfaces/channel.js";
-import { OutboxWorkerLoop } from "../application/use-cases/outbox-worker-loop.js";
-import { TurnWorkerLoop } from "../application/use-cases/turn-worker-loop.js";
-import { DeliverReply } from "../application/use-cases/deliver-reply.js";
-import { IngestMessage } from "../application/use-cases/ingest-message.js";
-import { RecoverInterruptedWork } from "../application/use-cases/recover-interrupted-work.js";
-import { RunNextTurn } from "../application/use-cases/run-next-turn.js";
-import { ReplyChunker } from "../application/services/reply-chunker.js";
-import { AdminServer } from "../adapters/inbound/admin-http/server.js";
-import { RuntimeHealth } from "../adapters/inbound/admin-http/runtime-health.js";
-import { PollLoop } from "../adapters/inbound/ilink/poll-loop.js";
-import { DryRunChannel } from "../adapters/outbound/ilink/dry-run-channel.js";
-import { FileCredentialStore } from "../adapters/outbound/ilink/file-credential-store.js";
-import { ILinkHttpClient } from "../adapters/outbound/ilink/ilink-http-client.js";
-import { ILinkQrLogin } from "../adapters/outbound/ilink/qr-login.js";
-import type { ILinkCredential } from "../adapters/outbound/ilink/protocol-types.js";
-import { PrometheusTelemetry } from "../adapters/outbound/observability/metrics.js";
-import { createLogger } from "../adapters/outbound/observability/logger.js";
-import { DryRunAgent } from "../adapters/outbound/pi/dry-run-agent.js";
-import { PiAgentGateway } from "../adapters/outbound/pi/pi-agent-gateway.js";
-import { SqliteControlPlane } from "../adapters/outbound/sqlite/index.js";
-import { AllowAllSendersPolicy, ExactSenderPolicy } from "../domain/policy/sender-policy.js";
+import type { Agent } from "../runtime/agent/ports/agent.js";
+import type { Channel } from "../modules/messaging/index.js";
+import { OutboxWorkerLoop } from "../workers/outbox-worker-loop.js";
+import { TurnWorkerLoop } from "../workers/turn-worker-loop.js";
+import { DeliverReply } from "../modules/messaging/index.js";
+import { IngestMessage } from "../modules/messaging/index.js";
+import { RecoverInterruptedWork } from "./recover-interrupted-work.js";
+import { RunNextTurn } from "../modules/turns/index.js";
+import { ReplyChunker } from "../modules/messaging/index.js";
+import { AdminServer } from "../entrypoints/admin-http/server.js";
+import { RuntimeHealth } from "../modules/observability/index.js";
+import { PollLoop } from "../workers/poll-loop.js";
+import { DryRunChannel } from "../adapters/dry-run/dry-run-channel.js";
+import { FileCredentialStore } from "../adapters/ilink/file-credential-store.js";
+import { ILinkHttpClient } from "../adapters/ilink/ilink-http-client.js";
+import { ILinkQrLogin } from "../adapters/ilink/qr-login.js";
+import type { ILinkCredential } from "../adapters/ilink/protocol-types.js";
+import { PrometheusTelemetry } from "../adapters/telemetry/metrics.js";
+import { createLogger } from "../adapters/telemetry/logger.js";
+import { DryRunAgent } from "../adapters/dry-run/dry-run-agent.js";
+import { PiAgentGateway } from "../adapters/pi/pi-agent-gateway.js";
+import { SqliteControlPlane } from "../adapters/sqlite/index.js";
+import { AllowAllSendersPolicy, ExactSenderPolicy } from "../modules/messaging/index.js";
 import type { AppConfig } from "./config.js";
 import { resolvePiModelId } from "./pi-onboarding.js";
-import { PermissionService } from "../application/services/permission-service.js";
-import { SqlitePermissionRepository } from "../adapters/outbound/sqlite/sqlite-permission-repository.js";
-import { LocalSandboxExecutor } from "../adapters/outbound/sandbox/local-sandbox-executor.js";
-import { principalId, subjectKey } from "../domain/policy/permissions.js";
+import { PermissionService } from "../modules/permissions/index.js";
+import { SqlitePermissionRepository } from "../adapters/sqlite/sqlite-permission-repository.js";
+import { LocalSandboxExecutor } from "../adapters/sandbox/local-sandbox-executor.js";
+import { principalId, subjectKey } from "../modules/permissions/index.js";
 
 export interface AppRuntime {
   run(signal: AbortSignal): Promise<void>;
@@ -162,7 +164,8 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const ownerId = `worker_${randomUUID()}`;
   const endSession = new EndSession(control, permissions, id => liveGateway?.disposeSession(id), error => logger.warn({err:error}, "session permission cleanup deferred"));
   const expireSessions = new ExpireIdleSessions(control, endSession);
-  const runNextTurn = new RunNextTurn(control, agent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles, endSession, config.modelManagementEnabled ? models : undefined);
+  const runtimeAgent = new AgentRuntime(agent);
+  const runNextTurn = new RunNextTurn(control, runtimeAgent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles, endSession, config.modelManagementEnabled ? models : undefined);
   const deliverReply = new DeliverReply(control, channel, { ownerId, leaseMs: 60_000 }, undefined, telemetry);
   const recover = new RecoverInterruptedWork(control);
   const memoryGenerator = config.dryRun ? {
@@ -182,7 +185,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
     port: config.adminPort,
     control,
     channel,
-    agent,
+    agent: runtimeAgent,
     health,
     telemetry,
     logger,
@@ -203,21 +206,14 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
       memoryJobs.recover();
       logger.info({ recovered: recover.execute() }, "startup recovery complete");
       logger.info({ host: config.adminHost, port: config.adminPort, accountId }, "wechat pi agent started");
-      const stop = new AbortController(), work = new AbortController();
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const shutdown = () => {
-        if (stop.signal.aborted) return;
-        logger.info("stopping intake; waiting up to 30 seconds for active work");
-        stop.abort();
-        if (signal.reason instanceof Error && signal.reason.name === "ServiceLockLost") work.abort();
-        else timer = setTimeout(() => work.abort(), 30_000);
-      };
-      signal.addEventListener("abort", shutdown, {once:true});
-      if (signal.aborted) shutdown();
-      const idleLoop = async () => { while(!stop.signal.aborted) { expireSessions.execute(); await sleep(60_000,stop.signal); } };
-      const tasks = [pollLoop.run(stop.signal), turnLoop.run(stop.signal,work.signal), outboxLoop.run(stop.signal,work.signal), memoryLoop.run(stop.signal,work.signal), idleLoop()];
-      try { await Promise.all(tasks); }
-      finally { shutdown(); await Promise.allSettled(tasks); if(timer)clearTimeout(timer); signal.removeEventListener("abort",shutdown); }
+      const idle = new IdleSessionLoop(expireSessions);
+      await runBackgroundLoops(signal, logger, [
+        stop => pollLoop.run(stop),
+        (stop, work) => turnLoop.run(stop, work),
+        (stop, work) => outboxLoop.run(stop, work),
+        (stop, work) => memoryLoop.run(stop, work),
+        stop => idle.run(stop),
+      ]);
     },
     async close(endSessions = true): Promise<void> {
       if (closed) return;

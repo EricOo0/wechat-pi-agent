@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTraceSpans, type TraceEvent } from "../../src/adapters/inbound/admin-http/trace-model.js";
+import { buildTraceSpans, type TraceEvent } from "../../src/modules/observability/application/trace-model.js";
 const event = (type: string, id: string, ordinal: number, extra: Record<string, unknown> = {}): TraceEvent => ({ event_type: `tool_execution_${type}`, ordinal, event_at: new Date(ordinal * 100), eventData: { toolCallId: id, toolName: "read", ...extra } });
 describe("trace span reconstruction", () => {
   it("pairs overlapping calls by ID and retains updates and errors", () => {

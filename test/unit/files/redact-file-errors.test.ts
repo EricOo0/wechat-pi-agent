@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAssistantMessageEventStream, type AssistantMessage } from '@earendil-works/pi-ai';
-import { redactFileErrors } from '../../../src/adapters/outbound/pi/file-input/redact-file-errors.js';
+import { redactFileErrors } from '../../../src/modules/artifacts/application/redact-file-errors.js';
 describe('file provider error redaction',()=>{
  it('scrubs signed URLs before stream events and final results reach history',async()=>{
   const stream=createAssistantMessageEventStream();

@@ -1,7 +1,7 @@
 import { loadEnvFile } from "node:process";
 import { resolve } from "node:path";
-import { FileCredentialStore } from "../adapters/outbound/ilink/file-credential-store.js";
-import { ILinkQrLogin } from "../adapters/outbound/ilink/qr-login.js";
+import { FileCredentialStore } from "../adapters/ilink/file-credential-store.js";
+import { ILinkQrLogin } from "../adapters/ilink/qr-login.js";
 
 try {
   loadEnvFile(".env");

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { RecoverInterruptedWork } from "../../../src/application/use-cases/recover-interrupted-work.js";
+import { RecoverInterruptedWork } from "../../../src/bootstrap/recover-interrupted-work.js";
 import { controlPlane, now } from "./helpers.js";
 
 describe("RecoverInterruptedWork", () => {

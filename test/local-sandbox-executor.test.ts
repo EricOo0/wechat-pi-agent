@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { LocalSandboxExecutor } from "../src/adapters/outbound/sandbox/local-sandbox-executor.js";
-import type { ExecutionPolicy } from "../src/domain/policy/permissions.js";
+import { LocalSandboxExecutor } from "../src/adapters/sandbox/local-sandbox-executor.js";
+import type { ExecutionPolicy } from "../src/modules/permissions/domain/permissions.js";
 
 describe.skipIf(process.platform !== "darwin")("Seatbelt tool executor", () => {
   let executor: LocalSandboxExecutor;

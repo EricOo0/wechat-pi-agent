@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadSkillCatalog, SkillLoadTracker } from "../../../src/adapters/outbound/pi/skill-catalog.js";
-import type { AgentEvent } from "../../../src/domain/execution/step.js";
+import { loadSkillCatalog, SkillLoadTracker } from "../../../src/adapters/pi/skill-catalog.js";
+import type { AgentEvent } from "../../../src/modules/observability/domain/step.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });

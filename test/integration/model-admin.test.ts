@@ -6,12 +6,12 @@ import { Script } from "node:vm";
 import { expect, it } from "vitest";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
-import { SqliteControlPlane } from "../../src/adapters/outbound/sqlite/sqlite-control-plane.js";
-import { SqliteModelSelectionRepository } from "../../src/adapters/outbound/sqlite/sqlite-model-selection-repository.js";
-import { ModelManagement } from "../../src/application/use-cases/select-model.js";
-import { PiProviderAuthentication } from "../../src/adapters/outbound/pi/pi-provider-authentication.js";
-import { ProviderRequestGate } from "../../src/adapters/outbound/pi/provider-request-gate.js";
-import { ModelRoutes } from "../../src/adapters/inbound/admin-http/model-routes.js";
+import { SqliteControlPlane } from "../../src/adapters/sqlite/sqlite-control-plane.js";
+import { SqliteModelSelectionRepository } from "../../src/adapters/sqlite/sqlite-model-selection-repository.js";
+import { ModelManagement } from "../../src/modules/models/application/select-model.js";
+import { PiProviderAuthentication } from "../../src/adapters/models/pi-provider-authentication.js";
+import { ProviderRequestGate } from "../../src/modules/models/application/provider-request-gate.js";
+import { ModelRoutes } from "../../src/entrypoints/admin-http/model-routes.js";
 it("serves local model management, guards writes and commits a selection", async () => {
   const root = await mkdtemp(join(tmpdir(), "model-admin-")); const path = join(root, "app.db"); const control = new SqliteControlPlane(path); control.migrate();
   const repository = new SqliteModelSelectionRepository(path); const credentials = new InMemoryCredentialStore();

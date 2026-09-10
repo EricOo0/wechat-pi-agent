@@ -2,10 +2,10 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { expect, it } from 'vitest';
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
 import type { AssistantMessage } from '@earendil-works/pi-ai';
-import { MarkdownMemoryStore } from '../../src/adapters/outbound/filesystem/markdown-memory-store.js';
-import { UserMemoryService } from '../../src/application/services/user-memory-service.js';
-import { pinUserMemory } from '../../src/adapters/outbound/pi/user-memory-context.js';
-import { createMemoryTools } from '../../src/adapters/outbound/pi/tools/memory-tools.js';
+import { MarkdownMemoryStore } from '../../src/adapters/filesystem/markdown-memory-store.js';
+import { UserMemoryService } from '../../src/modules/memory/application/user-memory-service.js';
+import { pinUserMemory } from '../../src/adapters/pi/user-memory-context.js';
+import { createMemoryTools } from '../../src/adapters/pi/tools/memory-tools.js';
 it('pins the overview across compaction and restoration, while new sessions load the latest version',async()=>{
  const root=await realpath(await mkdtemp('/tmp/memory-context-'));const owner='a'.repeat(64);const store=new MarkdownMemoryStore(root+'/memory');const memory=new UserMemoryService(store);
  const runtime=await ModelRuntime.create({authPath:root+'/auth.json',modelsStorePath:root+'/models.json',allowModelNetwork:false,refreshOnCreate:false});const model=runtime.getModels('openai-codex')[0]!;

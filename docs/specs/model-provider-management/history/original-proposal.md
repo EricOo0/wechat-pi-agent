@@ -264,12 +264,12 @@ interface ModelCatalog {
 
 ## 10. 参考
 
-- [现有命令路由](../../../../src/application/services/command-router.ts)
-- [RunNextTurn](../../../../src/application/use-cases/run-next-turn.ts)
+- [现有命令路由](../../../../src/modules/messaging/application/command-router.ts)
+- [RunNextTurn](../../../../src/modules/turns/application/workflows/run-next-turn.ts)
 - [启动选择](../../../../src/bootstrap/pi-onboarding.ts)
-- [Pi 网关](../../../../src/adapters/outbound/pi/pi-agent-gateway.ts)
-- [记忆模型调用](../../../../src/adapters/outbound/pi/pi-memory-generator.ts)
-- [现有 Trace span 转换](../../../../src/adapters/inbound/admin-http/trace-model.ts)
+- [Pi 网关](../../../../src/adapters/pi/pi-agent-gateway.ts)
+- [记忆模型调用](../../../../src/adapters/pi/pi-memory-generator.ts)
+- [现有 Trace span 转换](../../../../src/modules/observability/application/trace-model.ts)
 - [Pi runtime API](../../../../node_modules/@earendil-works/pi-coding-agent/dist/core/model-runtime.d.ts:60)
 - [Pi setModel](../../../../node_modules/@earendil-works/pi-coding-agent/dist/core/agent-session.js:1201)
 - [Pi 可注入 CredentialStore](../../../../node_modules/@earendil-works/pi-ai/dist/auth/types.d.ts:44)

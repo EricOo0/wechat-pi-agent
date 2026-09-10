@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { CodexFileUpload } from '../../../src/adapters/outbound/pi/file-input/codex/codex-file-upload.js';
-import { CodexFileInput } from '../../../src/adapters/outbound/pi/file-input/codex/codex-file-input.js';
-import { ModelFileInputRouter } from '../../../src/adapters/outbound/pi/file-input/model-file-input-router.js';
-import type { UserFileRepository } from '../../../src/application/interfaces/user-file-repository.js';
-import type { ModelFileRef, UserFile } from '../../../src/domain/files/user-file.js';
-import type { AgentEvent } from '../../../src/domain/execution/step.js';
+import { CodexFileUpload } from '../../../src/adapters/codex-files/codex-file-upload.js';
+import { CodexFileInput } from '../../../src/adapters/codex-files/codex-file-input.js';
+import { ModelFileInputRouter } from '../../../src/modules/artifacts/application/model-file-input-router.js';
+import type { UserFileRepository } from '../../../src/modules/artifacts/ports/user-file-repository.js';
+import type { ModelFileRef, UserFile } from '../../../src/modules/artifacts/domain/user-file.js';
+import type { AgentEvent } from '../../../src/modules/observability/domain/step.js';
 const model={api:'openai-codex-responses',provider:'openai-codex',id:'test',baseUrl:'https://chatgpt.com/backend-api'};
 function fixture(){
  const data=Buffer.from('%PDF-1.4\nfixture');const file:UserFile={id:'fil_'+'1'.repeat(32),ownerId:'a'.repeat(64),name:'resume.pdf',messageId:'m',itemIndex:0,status:'ready',bytes:data.length,sha256:createHash('sha256').update(data).digest('hex'),mimeType:'application/pdf',createdAt:new Date().toISOString()};

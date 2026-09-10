@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CommandRouter } from "../../../src/application/services/command-router.js";
+import { CommandRouter } from "../../../src/modules/messaging/application/command-router.js";
 
 describe("CommandRouter", () => {
   const router = new CommandRouter();

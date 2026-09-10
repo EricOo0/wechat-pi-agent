@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ILinkHttpClient } from "../../src/adapters/outbound/ilink/ilink-http-client.js";
+import { ILinkHttpClient } from "../../src/adapters/ilink/ilink-http-client.js";
 
 const directories: string[] = [];
 afterEach(async () => {

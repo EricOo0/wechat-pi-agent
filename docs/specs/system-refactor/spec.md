@@ -4,7 +4,7 @@
   "title": "系统模块化与工作流重构",
   "kind": "feature",
   "maturity": "stable",
-  "status": "accepted",
+  "status": "implementing",
   "lifecycle": "planned",
   "affects": [],
   "changes": [],
@@ -16,13 +16,13 @@
 
 # R-001：系统模块化与工作流重构规格
 
-本文是 R-001 的唯一规格正文，合并目标、结构设计、边界和验收要求；不另维护重复的 design.md。已确认按本规格的架构方向整理，业务重构尚未实施。当前覆盖现有 WeChat × Pi Agent；Harness 在重构完成后另行扩展。具体引擎选择仍按第 12 节决策。
+本文是 R-001 的唯一规格正文，合并目标、结构设计、边界和验收要求；不另维护重复的 design.md。已确认按本规格的架构方向整理，业务重构已开始，分阶段验证。当前覆盖现有 WeChat × Pi Agent；Harness 在重构完成后另行扩展。具体引擎选择仍按第 12 节决策。
 
 [开发状态](../../changelog/planned.md) · [功能覆盖表](coverage.md) · [逐文件迁移归属](source-map.md) · [图像提示词](../../architecture/proposals/system-refactor/assets/architecture.prompt.txt)
 
-> 图像标签对照：图中 Tasks 对应本规格的 `turns`；“能力应用服务”是文件、记忆、模型、权限等独立模块应用服务的集合称谓，不是聚合 Service。文字契约以本规格为准。
+> 当前范围：模块化重构与现有行为兼容；不引入 Graph、checkpoint 或通用进程恢复。
 
-![系统重构目标架构](../../architecture/proposals/system-refactor/assets/architecture.png)
+[当前架构与调用关系](../../architecture/current/2026-09-10/README.md)。原带 Graph 的图片仅作为历史讨论材料保留。
 
 ## 1. 问题、目标与范围
 
@@ -33,19 +33,18 @@
 具体约束：
 
 - 采用领域模块化目录；模块内部按 application、domain、ports 分层，跨模块通过 index.ts 暴露的接口访问。不再集中组织全局 use-cases。
-- 应用流程用 Workflow 表达，复杂流程用 Graph 定义；生命周期用状态机约束。简单查询、命令保留普通应用方法，无需全部图化。
-- Workflow Runtime 和 Agent Runtime 分开。前者推进应用流程，后者协调一次 Pi Agent Run。两个 Runtime 都属于应用执行机制，不拥有用户长期目标。
+- 应用流程使用模块内的普通函数或应用服务编排；生命周期用明确状态与合法转换约束，不引入 Graph 执行引擎。
+- Agent Runtime 协调单次 Pi 运行与取消；应用服务负责业务流程，不新增通用 Workflow Runtime。
 - 适配层只实现外部协议、SDK 和数据映射。发送内容、重试策略、入库去重、权限决策等业务逻辑由所属模块负责。
 - 单进程 Node.js、SQLite、JSONL、Markdown、本地沙箱继续作为实现基础。任务并发首先保持当前单 Turn worker 行为。
 - 不引入 Goal、Goal Controller、里程碑、预算驱动自动推进、通用 Verification、多 Agent、远端执行环境或新增渠道。
-- Graph 引擎尚未选型，不默认自研，不将 LangGraph 记为已引入依赖。检查点实现、Pi 兼容性和流程升级策略须在实施前做专门验证。
 
 ## 2. 五层职责和依赖
 
 | 层 | 内容 | 依赖规则 |
 |---|---|---|
 | 接入与展示 | 微信命令解析、回复呈现、Admin HTTP 页面与路由、登录及运维入口 | 调用模块公开应用接口；不直接读数据库或操作 Pi |
-| 应用 | Messaging、Conversation、Turns，以及各能力应用服务；Workflow / Agent Runtime | 编排流程，调用领域规则及输出端口 |
+| 应用 | Messaging、Conversation、Turns，以及各能力应用服务；Agent Runtime | 编排流程，调用领域规则及输出端口 |
 | 领域与能力 | 状态、规则、策略：会话、任务、投递、上下文、记忆、权限、工具、Skills、文件、模型、执行、观测 | domain 不依赖 Pi、HTTP、SQLite；复杂流程位于模块 application |
 | 协议适配 | iLink、Pi、模型认证、Codex 文件、SQLite、文件系统、沙箱、遥测 | 向内实现端口，向外调用具体依赖；不自行推进业务状态 |
 | 基础设施与外部依赖 | Pi SDK、模型服务、iLink/CDN、数据库、文件系统、OS 进程和沙箱 | 实际资源；不强制再建立一层转发代码 |
@@ -107,7 +106,6 @@ src/
 │       # domain/               模型、状态机、规则
 │       # ports/                本模块定义的外部依赖接口
 ├── runtime/
-│   ├── workflow/               # 图执行、步骤记录、等待、检查点契约
 │   └── agent/                  # 单 Run 生命周期、输入输出、事件和取消
 ├── adapters/
 │   ├── ilink/                  # 收发、二维码、凭证、图片/PDF 传输协议
@@ -132,23 +130,23 @@ scripts/                        # 构建复制、真实验证脚本，跟随实�
 docs/                           # 当前六类文档入口保持
 ```
 
-业务 Workflow 属于所属模块的 application/workflows；通用 Workflow Runtime 不包含微信、PDF、记忆等具体业务。公开接口避免传递 Pi SDK 类型、SQL 连接或具体沙箱实例。
+业务流程属于所属模块的 application/workflows；目录名仅表示业务编排，不表示需要工作流引擎。公开接口避免传递 Pi SDK 类型、SQL 连接或具体沙箱实例。
 
 ## 5. Workflow 与状态机
 
 | 流程 | 建议表达 | 关键节点与边界 |
 |---|---|---|
 | 接收入库 | 短事务流程 | 可信发送者过滤 → 原子接收/会话关联/Turn 入队/cursor 推进 → 可信权限控制 |
-| 处理 Turn | Graph | 领取 → 路由 → 权限/管理命令或附件准备 → 纯文件回执或 Agent Run → 结果与投递意图提交 |
+| 处理 Turn | 普通应用流程 | 领取 → 路由 → 权限/管理命令或附件准备 → 纯文件回执或 Agent Run → 结果与投递意图提交 |
 | 投递 | 独立持久流程 | 领取 Outbox → 格式呈现 → 协议发送 → 成功记录或有界重试 |
 | 会话结束 | 事务 + 幂等清理流程 | 检查活动任务 → 归档/任务处置/记忆入队 → 权限清理 → Pi 资源释放 |
-| 记忆整理 | Graph | 领取 → 绑定模型 → 提炼明细 → 可选合并 → 版本核对 → 发布 |
+| 记忆整理 | 普通应用流程 | 领取 → 绑定模型 → 提炼明细 → 可选合并 → 版本核对 → 发布 |
 | 模型认证 | 状态机 + 应用服务 | 开始 → 暂存凭证 → 认证 → 停止新准入/排空在途请求 → 提交或隔离 |
 | 权限管理 | 状态机 + 可信命令入口 | 申请 → 确认/拒绝/过期/撤销；确认后的 continuation 去重创建 |
 
-Graph 必须允许分支和循环；节点边界对应可记录的结果和可判定的副作用，不把所有函数机械包装为节点。短流程无需独立文件树。
+复杂流程通过命名方法和普通分支组织；可复用规则留在领域模块，短流程无需独立文件树。
 
-Conversation 状态机约束生命周期；Turns 状态机约束执行；Delivery 状态机约束发送；授权和认证各有独立状态。Graph State 保存编排进度和业务对象引用，不能复制成第二套权威业务数据库。
+Conversation 状态机约束生命周期；Turns 状态机约束执行；Delivery 状态机约束发送；授权和认证各有独立状态。业务存储是状态的唯一依据，不新增图状态副本。
 
 ## 6. 事务、所有权与跨模块调用
 
@@ -163,21 +161,19 @@ Conversation 状态机约束生命周期；Turns 状态机约束执行；Deliver
 
 ## 7. 恢复边界
 
-Workflow Runtime 的目标契约包含 definitionVersion、executionId、节点调用 ID、待执行节点、步骤结果、重试次数、等待关联、状态版本和执行所有者。版本变更必须有兼容或中断处置策略；不能读取旧检查点后默认执行新图。
-
-但此次保留现有恢复语义：
+当前不做通用进程恢复或任意步骤续跑，不新增 checkpoint 存储。保留现有可靠性与启动策略：
 
 - 启动先取得单实例锁、绑定管理端口，之后归档遗留活动 Session，中断未完成 Turn，不自动重放工具。
 - 生成完毕的 Outbox 按现有方式恢复发送；记忆任务恢复阶段处理和重试。
 - 活动 Session 内的授权 continuation 继续去重执行；旧 Session 关闭后不跨重启恢复。
-- Pi Run 作为一个节点时，外层检查点不能表达内部工具批次的精确位置。工具级 resume 没有得到验证，不列为重构交付能力。
+- 不承诺 Pi 内部模型/工具调用的精确续跑；未来有明确需求时再对齐恢复粒度和技术选型。
 - 外部操作成功但结果未落库时，依靠稳定操作 ID、查询或待核对状态处理，不能盲目重试。
 
 ## 8. 实施顺序与验收
 
-以本规格及覆盖表确定迁移和回归范围；在工作流引擎接入前完成 Graph/Pi 边界验证。具体阶段计划和实施状态统一记录到 changelog。
+以本规格及覆盖表确定迁移和回归范围；不因代码组织重构引入执行引擎。具体阶段计划和实施状态统一记录到 changelog。
 
-建议依次建立模块接口与功能基线、分离协议适配及呈现、迁移能力模块、迁移会话/任务/投递编排、接入选定的 Workflow Runtime、最后清理旧入口。每阶段保持可运行；不一次性改动数据目录和业务 ID。
+建议依次建立模块接口与功能基线、分离协议适配及呈现、迁移能力模块、迁移会话/任务/投递编排、最后清理旧入口。每阶段保持可运行；不一次性改动数据目录和业务 ID。
 
 覆盖表是功能验收清单；source-map 是文件归属审计，不能以文件全覆盖代替行为测试。实现时运行对应 TypeScript 单测、契约和集成检查，并验证图片、PDF、授权续跑、即时撤销、模型切换、记忆版本一致性和真实退出流程。OAuth/API Key、微信和真实模型调用应单列真实验收，不能由 Dry Run 代替。
 
@@ -188,7 +184,7 @@ Workflow Runtime 的目标契约包含 definitionVersion、executionId、节点�
 
 - 每个能力模块保留自己的应用服务。例如 artifacts 编排下载、配额校验与入库，memory 编排提炼与合并，models 编排选择与认证，permissions 处理可信授权命令。禁止建立聚合所有能力的万能 Service。
 - Worker 负责启动循环、调用领取接口、等待间隔、存活心跳、驱动级退避和退出信号；租约/状态变更通过所属模块接口进行。业务重试、权限判断和过期规则由模块负责。
-- Workflow Runtime 负责执行节点和维护编排进度；Worker 负责发现并触发工作。停止领取与取消在途执行分开控制。
+- Worker 负责发现并触发模块内应用流程。停止领取与取消在途执行分开控制。
 - shared 只接受跨模块通用且无业务归属的 Clock、ID、Result 等基础类型；业务模型、Pi 实例、DB 连接、全局 AppContext 和跨域业务 Service 不得放入 shared。
 - 协议适配器实现认证头、序列化、响应和错误转换等；其安全协议重试不能替代应用的业务重试，更不能重复不确定的外部副作用。
 
@@ -210,7 +206,7 @@ Workflow Runtime 的目标契约包含 definitionVersion、executionId、节点�
 | R-001-10 | 模型与认证一致性 | subjectKey 选择跨重启保留；Turn 固定绑定；账号提交等待在途请求排空；失败不覆盖旧凭证；不新增自动 fallback |
 | R-001-11 | 生命周期与恢复兼容 | 单实例锁和端口约束保留；退出停止领取并收尾；重启处置遗留 Turn，不重放工具；Outbox 与记忆按原策略恢复 |
 | R-001-12 | 观测和管理入口完整 | 原 Trace/Chat/Tree、记忆任务、模型认证页面和健康/指标/debug 接口仍可用；敏感数据脱敏、截断与历史 ID 兼容 |
-| R-001-13 | Workflow 恢复契约明确 | 选定引擎后验证步骤结果、等待关联、重复唤醒、定义版本兼容；每类流程声明恢复策略，不能以框架支持代替 Pi 工具级恢复证据 |
+| R-001-13 | 执行与恢复范围明确 | 无 Graph 引擎、通用 checkpoint 或新增 workflow.db；保留 Outbox/记忆阶段重试及启动中断策略，不自动恢复遗留聊天任务 |
 | R-001-14 | 数据与发布兼容 | 既有数据目录、主体与账号作用域不变；迁移保留关键事务；构建包含提示词和沙箱 worker；Dry Run 与正式模式分开验证 |
 
 ## 11. 验证方式与实施约束
@@ -222,12 +218,23 @@ Workflow Runtime 的目标契约包含 definitionVersion、executionId、节点�
 - 保留未关联改动，不提交运行数据、凭证或私人对话。提交、推送和真实验收分别报告。
 - 实施阶段计划与验证结果写入 changelog；本 spec 维护当前约束与验收条件，不维护逐日进度。
 
-## 12. 实施前待定事项
+## 12. 已落实的实施决策
 
 | 决策 | 必须得到的结论 | 影响范围 |
 |---|---|---|
-| Graph 引擎选型 | TypeScript、当前部署方式、检查点存储、取消和版本兼容是否满足；复用优于先自研 | Workflow Runtime 接入 |
-| Pi 节点边界 | 整个 Pi Run 包为一个节点时明确其不可见的内部进度；不将外层恢复误认为工具级 resume | Turn 流程与故障处置 |
-| 存储接口拆分 | 给出接收、完成、归档三组原子提交接口和迁移兼容方案 | ControlPlane 拆分 |
+| 流程组织 | 普通应用函数/服务与明确状态转换；当前不引入 Graph，未来选型需先与用户对齐 | 应用流程 |
+| Pi 运行边界 | 一次 Pi prompt 由 Agent Runtime 调用；不恢复其内部工具游标。Turn 启动恢复保持中断取消，权限 continuation 仍是新 Turn | Turn 流程与故障处置 |
+| 存储接口拆分 | MessageStore.ingestBatch、TurnStore.completeTurn、SessionLifecycleRepository.endSession 保留原子提交；DeliveryStore、TraceQuery、ConversationContextStore 分离读取/投递职责，SQLite Adapter 组合实现 | ControlPlane 拆分 |
 
-这些事项不改变已确认的模块分层；对应决策完成后更新本 spec 的技术契约，再进入相关实现。Harness 的长程目标与自动推进另属 H-001，不纳入 R-001。
+上述决策服务于已确认的模块分层；实现与验收证据见 changelog。Harness 的长程目标与自动推进另属 H-001，不纳入 R-001。
+
+
+
+
+## 13. 实施落点补充
+
+- 公开应用/领域/端口由 modules/<name>/index.ts 导出，静态导入检查纳入 npm run check。不通过兼容空目录维持旧 use-cases 导入。
+- CLI 文件只负责启动，首次登录与 onboarding 的组装保留在 bootstrap；Admin 依赖 AuthManagement、TraceQuery、MetricsQuery 等核心接口。
+- ProviderAuthService 管理认证生命周期；PiAuthBackend 适配登录/凭证，SqliteAuthOperationStore 适配原子提交。PiProviderAuthentication 保留薄组装入口以兼容现有构造接线。
+- ReplyPresentation 管回复分段与 typing；FileLibraryService 管文件查询/可用性；executeTool 管实时授权与执行分派。Pi 工具只做参数/结果桥接。
+- Turn 顺序处理控制命令、附件、回执或 Agent 调用、结果提交；Memory 顺序处理提炼、可选合并、版本核对和发布。授权 continuation 保持新 Turn；业务启动恢复仍取消旧会话任务。

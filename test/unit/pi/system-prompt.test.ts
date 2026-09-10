@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadSystemPrompt } from "../../../src/adapters/outbound/pi/system-prompt.js";
+import { loadSystemPrompt } from "../../../src/adapters/pi/system-prompt.js";
 
 const directories: string[] = [];
 afterEach(async () => {

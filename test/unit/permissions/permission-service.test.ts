@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, realpathSync, rmSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
-import { PermissionService } from "../../../src/application/services/permission-service.js";
-import { SqlitePermissionRepository } from "../../../src/adapters/outbound/sqlite/sqlite-permission-repository.js";
-import { principalId } from "../../../src/domain/policy/permissions.js";
-import type { InboundMessage } from "../../../src/domain/messaging/inbound-message.js";
-import type { PermissionLifetime } from "../../../src/application/interfaces/permission-repository.js";
+import { PermissionService } from "../../../src/modules/permissions/application/permission-service.js";
+import { SqlitePermissionRepository } from "../../../src/adapters/sqlite/sqlite-permission-repository.js";
+import { principalId } from "../../../src/modules/permissions/domain/permissions.js";
+import type { InboundMessage } from "../../../src/modules/messaging/domain/inbound-message.js";
+import type { PermissionLifetime } from "../../../src/modules/permissions/ports/permission-repository.js";
 
 describe("permission authority and persistence", () => {
   let directory: string;

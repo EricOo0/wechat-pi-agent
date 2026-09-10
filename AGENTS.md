@@ -16,9 +16,10 @@ WeChat × Pi Agent：通过微信 iLink 使用的 Node.js / TypeScript 个人助
 ## 代码入口
 
 - `src/bootstrap/container.ts`：依赖组装、后台循环与启停。
-- `src/application/use-cases/`：消息、Turn、投递与会话生命周期。
-- `src/adapters/outbound/pi/`：Agent、模型认证、工具与上下文。
-- `src/adapters/outbound/sqlite/`：持久化；`test/`：验证。
+- `src/modules/`：按领域组织 application/domain/ports，跨模块走 index.ts。
+- `src/runtime/` / `src/workers/`：Pi 执行与后台驱动。
+- `src/adapters/pi/`：Agent、模型认证、工具与上下文。
+- `src/adapters/sqlite/`：持久化；`test/`：验证。
 
 ## 工作约定
 

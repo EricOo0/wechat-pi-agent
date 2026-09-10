@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { InboundBatch } from "../../src/domain/messaging/inbound-message.js";
-import { SqliteControlPlane } from "../../src/adapters/outbound/sqlite/sqlite-control-plane.js";
+import type { InboundBatch } from "../../src/modules/messaging/domain/inbound-message.js";
+import { SqliteControlPlane } from "../../src/adapters/sqlite/sqlite-control-plane.js";
 
 function batch(previousCursor = "", nextCursor = "cursor-1"): InboundBatch {
   return {

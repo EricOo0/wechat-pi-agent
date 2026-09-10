@@ -2,12 +2,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ReplyChunker } from "../../src/application/services/reply-chunker.js";
-import { DeliverReply } from "../../src/application/use-cases/deliver-reply.js";
-import { RunNextTurn } from "../../src/application/use-cases/run-next-turn.js";
-import { DryRunChannel } from "../../src/adapters/outbound/ilink/dry-run-channel.js";
-import { DryRunAgent } from "../../src/adapters/outbound/pi/dry-run-agent.js";
-import { SqliteControlPlane } from "../../src/adapters/outbound/sqlite/sqlite-control-plane.js";
+import { ReplyChunker } from "../../src/modules/messaging/domain/reply-chunker.js";
+import { DeliverReply } from "../../src/modules/messaging/application/workflows/deliver-reply.js";
+import { RunNextTurn } from "../../src/modules/turns/application/workflows/run-next-turn.js";
+import { DryRunChannel } from "../../src/adapters/dry-run/dry-run-channel.js";
+import { DryRunAgent } from "../../src/adapters/dry-run/dry-run-agent.js";
+import { SqliteControlPlane } from "../../src/adapters/sqlite/sqlite-control-plane.js";
 
 const directories: string[] = [];
 afterEach(async () => {

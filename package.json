@@ -8,14 +8,15 @@
   },
   "scripts": {
     "dev": "tsx src/bootstrap/main.ts",
-    "ilink:login": "tsx src/bootstrap/ilink-login.ts",
+    "ilink:login": "tsx src/entrypoints/cli/ilink-login.ts",
     "start": "node dist/bootstrap/main.js",
     "build": "node scripts/clean-build.mjs && tsc -p tsconfig.build.json && node scripts/copy-sandbox-workers.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src test --max-warnings=0",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+    "check": "npm run check:architecture && npm run lint && npm run typecheck && npm test && npm run build",
+    "check:architecture": "node scripts/check-architecture.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.75",

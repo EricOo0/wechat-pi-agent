@@ -1,6 +1,6 @@
 import { Script, createContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
-import { TRACE_PAGE_HTML } from '../../src/adapters/inbound/admin-http/trace-page.js';
+import { TRACE_PAGE_HTML } from '../../src/entrypoints/admin-http/trace-page.js';
 class Node {
   textContent = '';
   className = '';

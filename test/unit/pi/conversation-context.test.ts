@@ -1,7 +1,7 @@
 import { Agent } from '@earendil-works/pi-agent-core';
 import type { AgentSession } from '@earendil-works/pi-coding-agent';
 import { describe, expect, it, vi } from 'vitest';
-import { syncConversationContext } from '../../../src/adapters/outbound/pi/conversation-context.js';
+import { syncConversationContext } from '../../../src/adapters/pi/conversation-context.js';
 const event = {id:'file_receipt:turn-1',kind:'file_receipt' as const,at:'2026-09-07T00:00:00Z',content:'User uploaded resume.pdf, fileId=fil_demo. Application replied: saved.'};
 describe('application conversation replay',()=>{
  it('adds upload and receipt without inference, deduplicates, and restores context after compaction',async()=>{

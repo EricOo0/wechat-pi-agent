@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PrometheusTelemetry } from "../../../src/adapters/outbound/observability/metrics.js";
+import { PrometheusTelemetry } from "../../../src/adapters/telemetry/metrics.js";
 
 describe("PrometheusTelemetry", () => {
   it("accepts command and agent turn counters with one stable label set", async () => {

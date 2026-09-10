@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ReplyChunker } from "../../../src/application/services/reply-chunker.js";
+import { ReplyChunker } from "../../../src/modules/messaging/domain/reply-chunker.js";
 
 describe("ReplyChunker", () => {
   it("prefers natural boundaries and preserves the exact text", () => {

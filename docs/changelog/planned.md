@@ -9,11 +9,11 @@
 ## R-001 系统架构重构
 
 - 优先顺序：先于 H-001 Harness。
-- 状态：架构方向已确认，已形成统一 spec；引擎选型和原子提交接口待细化，业务重构尚未开始。
+- 状态：本地重构已实施，正在完成最终条款核对与验证；未提交、推送或部署。
 - [R-001 规格](../specs/system-refactor/spec.md) · [功能覆盖](../specs/system-refactor/coverage.md) · [逐文件归属](../specs/system-refactor/source-map.md)
-- 已确认：先理清全系统职责，按领域模块组织，工作流采用状态机与 Graph 思路；适配层负责外部协议和存储映射。
-- 下一动作：完成 spec 第 12 节的引擎/Pi/事务接口决策，再制定分阶段实施计划。
-- 本次不引入 Goal Controller 或自动目标续跑；不把 Workflow 检查点等同 Pi 内部精确 resume。
+- 已确认：先理清全系统职责，按领域模块组织，业务流程使用普通应用服务与明确状态转换；适配层负责外部协议和存储映射。
+- 实施：引擎/Pi/事务接口决策已落实，见 [记录](r001/implementation.md)。真实微信/认证/模型输入验收单列，不以本地测试代替。
+- 本次不引入 Goal Controller 或自动目标续跑；不引入 Graph、checkpoint 或通用进程恢复。
 
 ## H-001 Agent Harness
 

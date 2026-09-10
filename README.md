@@ -23,9 +23,17 @@
 
 ### 技术模块与职责
 
-![WeChat × Pi Agent 当前系统架构](docs/architecture/current/2026-09-09/assets/current-system-2026-09-09.png)
+```mermaid
+flowchart LR
+  Input[微信接入] --> Messaging[Messaging]
+  Messaging --> Turns[Conversation / Turns]
+  Turns --> Runtime[Agent Runtime / Pi]
+  Runtime --> Capabilities[上下文 / 文件 / 记忆 / 工具权限]
+  Turns --> Outbox[Outbox 投递]
+  Outbox --> WeChat[iLink / 微信]
+```
 
-[查看原图](docs/architecture/current/2026-09-09/assets/current-system-2026-09-09.png) · [架构说明与源码依据](docs/architecture/current/2026-09-09/current-system-2026-09-09.md) · [制图提示词](docs/architecture/current/2026-09-09/assets/current-system-2026-09-09.prompt.txt)。图基于 2026-09-09 本地源码，涵盖消息主链路、Agent 运行时、模型与认证、工具沙箱、文件、记忆和持久化；实线表示业务流与调用，虚线表示配置、查询与存储依赖。
+[当前模块与运行边界](docs/architecture/current/2026-09-10/README.md) · [R-001 规格](docs/specs/system-refactor/spec.md) · [重构前图像基线](docs/architecture/current/2026-09-09/assets/current-system-2026-09-09.png)。当前结构已在本地实现，部署与真实账号验收另行记录。
 
 应用以单实例 Node.js / TypeScript 服务运行。Bootstrap 是启动与组装入口：加载配置和认证、创建组件并注入依赖、启动管理接口和后台循环、协调退出收尾。它不属于消息接入模块，也不参与逐条消息处理。浏览器打开 `/admin` 即管理页，主要用于旁路查询 Trace 与运行状态。
 
@@ -41,7 +49,7 @@
 
 这是现有代码的职责视图；模块共享持久化适配器。Adapter 是项目实现的边界封装：iLink 使用原生 `fetch`，Admin 使用 `node:http`，存储使用 `node:sqlite` / `node:fs`；`PiAgentGateway` 封装 Pi SDK。
 
-应用调度由 SQLite 持久队列和五个异步循环实现，单个 Turn worker 串行执行，记忆 worker 独立运行。单 Turn 内的模型与工具循环由 `pi-agent-core` 驱动，`pi-coding-agent` 管理会话与资源，`pi-ai` 处理 Provider 协议与模型流。
+应用调度由 SQLite 持久队列和五个异步循环实现，单个 Turn worker 串行执行，记忆 worker 独立运行。Turn 和记忆整理使用普通应用流程，启动时按原有策略中断旧会话任务，不自动重放工具。单 Turn 内的模型与工具循环由 `pi-agent-core` 驱动，`pi-coding-agent` 管理会话与资源，`pi-ai` 处理 Provider 协议与模型流。
 
 权限校验位于应用服务层，OS 沙箱位于工具执行适配器：`PermissionService → PolicyCompiler → LocalSandboxExecutor`。工具子进程通过 `@anthropic-ai/sandbox-runtime` 使用 Seatbelt / bubblewrap；微信收发和模型请求在主服务控制面。记忆使用双层 Markdown 正文与 SQLite 后台任务状态，生成和读取是独立路径。
 
@@ -274,14 +282,14 @@ Agent 发起的申请可关联被阻塞的 Turn，确认后原子创建一条去
 运行数据在 `data/` 下且不进入 Git。迁移到另一执行环境时，不要直接复用执行器身份和权限数据。
 
 - [bootstrap](src/bootstrap/container.ts)：依赖组装、五类循环及关闭流程。
-- [application/use-cases](src/application/use-cases)：消息、执行、发送、会话结束及记忆任务编排。
-- [application/interfaces](src/application/interfaces)：按职责定义的存储、模型、Channel 和执行边界。
-- [pi 适配器](src/adapters/outbound/pi)：会话、工具、上下文、文件协议和模型 Trace。
-- [SQLite](src/adapters/outbound/sqlite) / [文件存储](src/adapters/outbound/filesystem) / [沙箱](src/adapters/outbound/sandbox)：具体实现。
+- [application/use-cases](src/modules)：消息、执行、发送、会话结束及记忆任务编排。
+- [application/interfaces](src/modules)：按职责定义的存储、模型、Channel 和执行边界。
+- [pi 适配器](src/adapters/pi)：会话、工具、上下文、文件协议和模型 Trace。
+- [SQLite](src/adapters/sqlite) / [文件存储](src/adapters/filesystem) / [沙箱](src/adapters/sandbox)：具体实现。
 
 ## 验证状态
 
-当前代码已通过 109 个自动化测试、类型检查、Lint 和构建。覆盖消息/文件、权限与真实 macOS 沙箱、上下文、Trace、记忆阶段重试、版本一致性、闲置结束、真实子进程 SIGTERM 和退出后任务恢复。
+重构后的本地检查结果见 [R-001 验证记录](docs/changelog/r001/implementation.md)。覆盖消息/文件、权限与真实 macOS 沙箱、上下文、Trace、记忆阶段重试、版本一致性、闲置结束、真实子进程 SIGTERM 和退出后任务恢复。
 
 以下命令会使用当前模型认证并消耗用量；只使用隔离临时目录和合成数据：
 

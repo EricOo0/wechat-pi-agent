@@ -1,0 +1,117 @@
+
+> wechat-pi-agent@0.1.0 check
+> npm run check:architecture && npm run lint && npm run typecheck && npm test && npm run build
+
+
+> wechat-pi-agent@0.1.0 check:architecture
+> node scripts/check-architecture.mjs
+
+Architecture boundaries passed (140 source files).
+
+> wechat-pi-agent@0.1.0 lint
+> eslint src test --max-warnings=0
+
+
+> wechat-pi-agent@0.1.0 typecheck
+> tsc --noEmit
+
+
+> wechat-pi-agent@0.1.0 test
+> vitest run
+
+
+ RUN  v3.2.4 /Users/bytedance/GolandProjects/test
+
+(node:41398) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41399) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41403) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41393) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41400) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/integration/memory-system.test.ts (9 tests) 572ms
+ ✓ test/integration/permission-flow.test.ts (5 tests) 324ms
+ ✓ test/unit/runtime/architecture.test.ts (1 test) 1647ms
+   ✓ rejects private cross-module access and IO in a domain while allowing public ports  1647ms
+ ✓ test/integration/permission-continuation.test.ts (8 tests) 519ms
+(node:41479) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/unit/permissions/permission-service.test.ts (11 tests) 224ms
+ ✓ test/unit/pi/skill-loader.test.ts (1 test) 232ms
+(node:41394) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41507) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41397) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/integration/sqlite-control-plane.test.ts (4 tests) 82ms
+ ✓ test/unit/pi/skill-catalog.test.ts (4 tests) 731ms
+   ✓ bundled skill catalog and load tracing > places bundled skills above project auto and global skills, below explicit project paths  361ms
+ ✓ test/unit/runtime/workflow.test.ts (4 tests) 242ms
+ ✓ test/integration/user-files.test.ts (5 tests) 360ms
+(node:41516) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/integration/admin-traces.test.ts (1 test) 61ms
+(node:41517) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/contract/ilink-http-client.test.ts (2 tests) 39ms
+ ✓ test/integration/e2e-dry-run.test.ts (1 test) 54ms
+ ✓ test/integration/memory-context.test.ts (1 test) 96ms
+(node:41478) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41553) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:41480) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/unit/models/model-management.test.ts (5 tests) 39ms
+ ✓ test/unit/application/run-next-turn.test.ts (5 tests) 49ms
+ ✓ test/integration/model-switching.test.ts (1 test) 140ms
+ ✓ test/unit/permissions/policy-compiler.test.ts (2 tests) 24ms
+ ✓ test/integration/memory-runtime.test.ts (1 test) 468ms
+   ✓ gracefully archives sessions, queues memory work, and processes it after restart  467ms
+ ✓ test/contract/ilink-image-update.test.ts (1 test) 36ms
+ ✓ test/unit/models/provider-authentication.test.ts (4 tests) 175ms
+ ✓ test/integration/service-shutdown.test.ts (1 test) 4448ms
+   ✓ SIGTERM runs real main shutdown before releasing the process lock  4447ms
+ ✓ test/unit/ilink/image-downloader.test.ts (2 tests) 25ms
+ ✓ test/unit/pi/system-prompt.test.ts (2 tests) 22ms
+ ✓ test/unit/trace-model.test.ts (6 tests) 5ms
+ ✓ test/unit/application/recover-interrupted-work.test.ts (1 test) 5ms
+ ✓ test/unit/files/codex-file-input.test.ts (6 tests) 17ms
+ ✓ test/unit/application/ingest-message.test.ts (1 test) 3ms
+ ✓ test/unit/reasoning-view.test.ts (4 tests) 5ms
+ ✓ test/unit/application/deliver-reply.test.ts (2 tests) 5ms
+ ✓ test/unit/bootstrap/config.test.ts (2 tests) 7ms
+ ✓ test/unit/application/reply-chunker.test.ts (3 tests) 2ms
+ ✓ test/unit/application/command-router.test.ts (2 tests) 2ms
+ ✓ test/unit/observability/metrics.test.ts (1 test) 2ms
+ ✓ test/unit/pi/model-call-trace.test.ts (4 tests) 9ms
+(node:41531) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/unit/pi/conversation-context.test.ts (1 test) 3ms
+ ✓ test/unit/files/redact-file-errors.test.ts (1 test) 3ms
+ ✓ test/integration/model-admin.test.ts (1 test) 56ms
+ ✓ test/unit/memory/redaction.test.ts (1 test) 2ms
+ ✓ test/integration/managed-tools.test.ts (2 tests) 4023ms
+   ✓ managed Pi tools through Seatbelt > defaults to basic permissions and applies an approved Full Access grant then reset to the SAME tools  3175ms
+   ✓ managed Pi tools through Seatbelt > permits a granted directory once without leaking the grant to a second operation  847ms
+ ✓ test/local-sandbox-executor.test.ts (8 tests) 8214ms
+   ✓ Seatbelt tool executor > allows workspace tools but rejects outside reads, writes and symlinks  4480ms
+   ✓ Seatbelt tool executor > does not leak environment secrets and blocks direct network egress  816ms
+   ✓ Seatbelt tool executor > denies protected local ports through the proxy despite wildcard network access  1032ms
+   ✓ Seatbelt tool executor > keeps concurrent users' policies isolated  426ms
+   ✓ Seatbelt tool executor > keeps nested control paths denied when their ancestor is granted  361ms
+   ✓ Seatbelt tool executor > revokes running commands and kills background descendants  841ms
+
+ Test Files  41 passed (41)
+      Tests  127 passed (127)
+   Start at  13:16:31
+   Duration  8.58s (transform 1.17s, setup 0ms, collect 32.68s, tests 22.97s, environment 5ms, prepare 3.71s)
+
+
+> wechat-pi-agent@0.1.0 build
+> node scripts/clean-build.mjs && tsc -p tsconfig.build.json && node scripts/copy-sandbox-workers.mjs
+

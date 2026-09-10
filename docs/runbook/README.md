@@ -1,5 +1,7 @@
 # 操作与排障
 
+- [TypeScript 源码目录迁移检查](source-relocation.md)：模块路径、cwd 路径与构建资源的区别。
+
 - [项目文档自动维护](project-workflow.md)：Skill、提交检查与 Codex 收尾 Hook。
 
 - [启动与配置](../../README.md#快速开始)

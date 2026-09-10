@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { ILinkHttpClient } from "../../src/adapters/outbound/ilink/ilink-http-client.js";
+import { ILinkHttpClient } from "../../src/adapters/ilink/ilink-http-client.js";
 
 interface SeenRequest {
   url: string;

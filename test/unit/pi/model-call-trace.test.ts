@@ -1,9 +1,9 @@
 import { createAssistantMessageEventStream, type AssistantMessage, type Model, type Api } from '@earendil-works/pi-ai';
 import type { StreamFn } from '@earendil-works/pi-agent-core';
 import { describe, expect, it } from 'vitest';
-import { traceModelCalls } from '../../../src/adapters/outbound/pi/model-call-trace.js';
-import { traceSnapshot } from '../../../src/adapters/outbound/pi/trace-snapshot.js';
-import type { AgentEvent } from '../../../src/domain/execution/step.js';
+import { traceModelCalls } from '../../../src/adapters/pi/model-call-trace.js';
+import { traceSnapshot } from '../../../src/modules/observability/application/trace-snapshot.js';
+import type { AgentEvent } from '../../../src/modules/observability/domain/step.js';
 const model={id:'test-model',provider:'test',api:'openai-responses'} as Model<Api>;
 const answer:AssistantMessage={role:'assistant',content:[{type:'thinking',thinking:'Returned reasoning summary',thinkingSignature:'opaque-secret'},{type:'text',text:'Answer'},{type:'toolCall',id:'call-1',name:'read',arguments:{path:'/demo'}}],api:'openai-responses',provider:'test',model:'test-model',stopReason:'toolUse',timestamp:0,usage:{input:10,output:5,cacheRead:0,cacheWrite:0,totalTokens:15,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}}};
 describe('model round trace',()=>{

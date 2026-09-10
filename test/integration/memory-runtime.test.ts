@@ -3,8 +3,8 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { expect, it } from 'vitest';
 import { buildApp } from '../../src/bootstrap/container.js';
 import { loadConfig } from '../../src/bootstrap/config.js';
-import { SqliteControlPlane } from '../../src/adapters/outbound/sqlite/sqlite-control-plane.js';
-import { SqliteMemoryJobRepository } from '../../src/adapters/outbound/sqlite/sqlite-memory-job-repository.js';
+import { SqliteControlPlane } from '../../src/adapters/sqlite/sqlite-control-plane.js';
+import { SqliteMemoryJobRepository } from '../../src/adapters/sqlite/sqlite-memory-job-repository.js';
 import { acquireServiceLock } from '../../src/bootstrap/service-lock.js';
 const freePort=()=>new Promise<number>((resolve,reject)=>{const server=createServer();server.on('error',reject);server.listen(0,'127.0.0.1',()=>{const address=server.address();if(!address||typeof address==='string')throw Error('no port');server.close(()=>resolve(address.port));});});
 async function until(check:()=>boolean|Promise<boolean>){for(let i=0;i<100;i++){if(await check())return;await new Promise(r=>setTimeout(r,30));}throw Error('condition timed out');}

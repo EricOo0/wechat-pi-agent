@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { IngestMessage } from "../../../src/application/use-cases/ingest-message.js";
-import { ExactSenderPolicy } from "../../../src/domain/policy/sender-policy.js";
+import { IngestMessage } from "../../../src/modules/messaging/application/workflows/ingest-message.js";
+import { ExactSenderPolicy } from "../../../src/modules/messaging/domain/sender-policy.js";
 import { batch, controlPlane, inbound } from "./helpers.js";
 
 describe("IngestMessage", () => {

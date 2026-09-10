@@ -62,7 +62,7 @@
 
 ## 5. 当前管理接口与数据
 
-来源：[model-routes.ts](../../../src/adapters/inbound/admin-http/model-routes.ts)。以下是现行路径，历史提案中的 /admin/models/providers 等路径不适用。
+来源：[model-routes.ts](../../../src/entrypoints/admin-http/model-routes.ts)。以下是现行路径，历史提案中的 /admin/models/providers 等路径不适用。
 
 | 方法与路径 | 用途 |
 |---|---|
@@ -80,7 +80,7 @@
 
 入口受 MODEL_MANAGEMENT_ENABLED 控制。管理路由校验 loopback、Host、Origin；API 要求页面控制令牌。认证响应 no-store，写入限制请求大小；日志、Trace、审计不保存密钥、token、OAuth 回调或签名 URL。
 
-当前 migration 8 包含 user_model_settings、turn_model_bindings、provider_credential_revisions、provider_auth_operations、model_management_events；精确字段见 [migrations.ts](../../../src/adapters/outbound/sqlite/migrations.ts)。旧提案的拟新增表结构不替代实际 schema。
+当前 migration 8 包含 user_model_settings、turn_model_bindings、provider_credential_revisions、provider_auth_operations、model_management_events；精确字段见 [migrations.ts](../../../src/adapters/sqlite/migrations.ts)。旧提案的拟新增表结构不替代实际 schema。
 
 ## 6. 验收与兼容约束
 

@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
-import { PolicyCompiler } from "../../../src/application/services/policy-compiler.js";
-import { basicPolicy } from "../../../src/domain/policy/permissions.js";
+import { PolicyCompiler } from "../../../src/adapters/sandbox/policy-compiler.js";
+import { basicPolicy } from "../../../src/modules/permissions/domain/permissions.js";
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 function fixture() {

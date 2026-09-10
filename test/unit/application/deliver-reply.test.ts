@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Channel } from "../../../src/application/interfaces/channel.js";
-import { DeliverReply } from "../../../src/application/use-cases/deliver-reply.js";
+import type { Channel } from "../../../src/modules/messaging/ports/channel.js";
+import { DeliverReply } from "../../../src/modules/messaging/application/workflows/deliver-reply.js";
 import { claimedOutbox, controlPlane, now } from "./helpers.js";
 
 function channel(sendText: Channel["sendText"]): Channel {

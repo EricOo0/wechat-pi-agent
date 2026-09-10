@@ -1,16 +1,16 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SqliteControlPlane } from "../../src/adapters/outbound/sqlite/sqlite-control-plane.js";
-import { SqlitePermissionRepository } from "../../src/adapters/outbound/sqlite/sqlite-permission-repository.js";
-import { PermissionService } from "../../src/application/services/permission-service.js";
-import { IngestMessage } from "../../src/application/use-cases/ingest-message.js";
-import { RunNextTurn } from "../../src/application/use-cases/run-next-turn.js";
-import { ReplyChunker } from "../../src/application/services/reply-chunker.js";
-import { ExactSenderPolicy } from "../../src/domain/policy/sender-policy.js";
-import { principalId } from "../../src/domain/policy/permissions.js";
-import { DryRunChannel } from "../../src/adapters/outbound/ilink/dry-run-channel.js";
-import type { InboundMessage } from "../../src/domain/messaging/inbound-message.js";
-import type { AgentRunRequest } from "../../src/application/interfaces/agent.js";
+import { SqliteControlPlane } from "../../src/adapters/sqlite/sqlite-control-plane.js";
+import { SqlitePermissionRepository } from "../../src/adapters/sqlite/sqlite-permission-repository.js";
+import { PermissionService } from "../../src/modules/permissions/application/permission-service.js";
+import { IngestMessage } from "../../src/modules/messaging/application/workflows/ingest-message.js";
+import { RunNextTurn } from "../../src/modules/turns/application/workflows/run-next-turn.js";
+import { ReplyChunker } from "../../src/modules/messaging/domain/reply-chunker.js";
+import { ExactSenderPolicy } from "../../src/modules/messaging/domain/sender-policy.js";
+import { principalId } from "../../src/modules/permissions/domain/permissions.js";
+import { DryRunChannel } from "../../src/adapters/dry-run/dry-run-channel.js";
+import type { InboundMessage } from "../../src/modules/messaging/domain/inbound-message.js";
+import type { AgentRunRequest } from "../../src/runtime/agent/ports/agent.js";
 
 describe("authenticated permission flow", () => {
   let dir: string;

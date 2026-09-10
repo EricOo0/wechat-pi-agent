@@ -1,12 +1,12 @@
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createAgentTools } from "../../src/adapters/outbound/pi/tools/index.js";
-import { LocalSandboxExecutor } from "../../src/adapters/outbound/sandbox/local-sandbox-executor.js";
-import { SqlitePermissionRepository } from "../../src/adapters/outbound/sqlite/sqlite-permission-repository.js";
-import { PermissionService, type PermissionContext } from "../../src/application/services/permission-service.js";
-import { PolicyCompiler } from "../../src/application/services/policy-compiler.js";
-import type { InboundMessage } from "../../src/domain/messaging/inbound-message.js";
-import { principalId, subjectKey } from "../../src/domain/policy/permissions.js";
+import { createAgentTools } from "../../src/adapters/pi/tools/index.js";
+import { LocalSandboxExecutor } from "../../src/adapters/sandbox/local-sandbox-executor.js";
+import { SqlitePermissionRepository } from "../../src/adapters/sqlite/sqlite-permission-repository.js";
+import { PermissionService, type PermissionContext } from "../../src/modules/permissions/application/permission-service.js";
+import { PolicyCompiler } from "../../src/adapters/sandbox/policy-compiler.js";
+import type { InboundMessage } from "../../src/modules/messaging/domain/inbound-message.js";
+import { principalId, subjectKey } from "../../src/modules/permissions/domain/permissions.js";
 
 describe.skipIf(process.platform !== "darwin")("managed Pi tools through Seatbelt", () => {
   let root: string;

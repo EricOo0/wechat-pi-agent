@@ -5,8 +5,8 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { expect, it } from 'vitest';
-import { SqliteControlPlane } from '../../src/adapters/outbound/sqlite/sqlite-control-plane.js';
-import { SqliteMemoryJobRepository } from '../../src/adapters/outbound/sqlite/sqlite-memory-job-repository.js';
+import { SqliteControlPlane } from '../../src/adapters/sqlite/sqlite-control-plane.js';
+import { SqliteMemoryJobRepository } from '../../src/adapters/sqlite/sqlite-memory-job-repository.js';
 it('SIGTERM runs real main shutdown before releasing the process lock',async()=>{
  const root=await realpath(await mkdtemp('/tmp/session-sigterm-'));
  const port=await new Promise<number>((yes,no)=>{const s=createServer();s.on('error',no);s.listen(0,'127.0.0.1',()=>{const a=s.address();if(!a||typeof a==='string')throw Error('no port');s.close(()=>yes(a.port));});});
