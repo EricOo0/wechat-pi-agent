@@ -1,5 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
-import type { Channel } from "../../modules/messaging/index.js";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import type { Channel, PreparedImage } from "../../modules/messaging/index.js";
 import type { InboundBatch, InboundMessage } from "../../modules/messaging/index.js";
 import type { OutboundMessage } from "../../modules/messaging/index.js";
 import { downloadILinkImage } from "./ilink-image-downloader.js";
@@ -71,6 +71,81 @@ export class ILinkHttpClient implements Channel {
     );
     this.assertSuccess(response);
     return {};
+  }
+
+  public imageCredentialScope(): string {
+    return createHash("sha256").update(JSON.stringify([this.options.baseUrl, this.options.botToken])).digest("hex");
+  }
+
+  public async prepareImage(
+    message: OutboundMessage,
+    image: { data: Buffer; mimeType: "image/png" | "image/jpeg" },
+    signal: AbortSignal,
+  ): Promise<PreparedImage> {
+    signal.throwIfAborted();
+    if (image.data.length === 0 || !["image/png", "image/jpeg"].includes(image.mimeType)) {
+      throw new ILinkProtocolError("Unsupported or empty outbound image");
+    }
+    const key = randomBytes(16);
+    const filekey = randomBytes(16).toString("hex");
+    const cipher = createCipheriv("aes-128-ecb", key, null);
+    const ciphertext = Buffer.concat([cipher.update(image.data), cipher.final()]);
+    const upload = await this.post<{ ret?: number; errcode?: number; errmsg?: string; upload_full_url?: string; upload_param?: string }>(
+      "ilink/bot/getuploadurl",
+      {
+        filekey, media_type: 1, to_user_id: message.peerId,
+        rawsize: image.data.length, rawfilemd5: createHash("md5").update(image.data).digest("hex"),
+        filesize: ciphertext.length, no_need_thumb: true, aeskey: key.toString("hex"),
+        base_info: this.baseInfo(),
+      },
+      this.options.requestTimeoutMs ?? 15_000,
+      signal,
+    );
+    this.assertImageSuccess(upload);
+    const base = (this.options.cdnBaseUrl ?? "https://novac2c.cdn.weixin.qq.com/c2c").replace(/\/$/, "");
+    const target = upload.upload_full_url?.trim() || (upload.upload_param
+      ? `${base}/upload?encrypted_query_param=${encodeURIComponent(upload.upload_param)}&filekey=${filekey}` : undefined);
+    if (!target) throw new ILinkProtocolError("iLink returned no image upload URL");
+    let url: URL;
+    try { url = new URL(target); } catch { throw new ILinkProtocolError("iLink returned invalid image upload URL"); }
+    if (url.protocol !== "https:" || url.username || url.password) throw new ILinkProtocolError("iLink image upload requires HTTPS");
+    const response = await this.fetchImpl(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: new Uint8Array(ciphertext),
+      redirect: "error",
+      signal: AbortSignal.any([signal, AbortSignal.timeout(this.options.requestTimeoutMs ?? 15_000)]),
+    });
+    // CDN errors may contain signed URLs/keys; never persist their bodies in Outbox errors.
+    if (response.status !== 200) {
+      await response.body?.cancel();
+      throw new ILinkProtocolError(`iLink image upload HTTP ${response.status}`);
+    }
+    const encryptQueryParam = response.headers.get("x-encrypted-param");
+    await response.body?.cancel();
+    if (!encryptQueryParam) throw new ILinkProtocolError("iLink image upload missing encrypted media reference");
+    return { encryptQueryParam, aesKey: Buffer.from(key.toString("hex"), "utf8").toString("base64"), ciphertextSize: ciphertext.length };
+  }
+
+  public async sendPreparedImage(message: OutboundMessage, image: PreparedImage, signal: AbortSignal): Promise<{ remoteRequestId?: string }> {
+    const response = await this.post<SendMessageResponse>("ilink/bot/sendmessage", {
+      msg: {
+        to_user_id: message.peerId, context_token: message.contextToken,
+        client_id: message.clientId, run_id: message.runId,
+        message_type: ILinkMessageType.BOT, message_state: ILinkMessageState.FINISH,
+        item_list: [{ type: ILinkItemType.IMAGE, image_item: {
+          media: { encrypt_query_param: image.encryptQueryParam, aes_key: image.aesKey, encrypt_type: 1 },
+          mid_size: image.ciphertextSize,
+        } }],
+      },
+      base_info: this.baseInfo(),
+    }, this.options.requestTimeoutMs ?? 15_000, signal);
+    this.assertImageSuccess(response);
+    return {};
+  }
+
+  public async sendImage(message: OutboundMessage, image: { data: Buffer; mimeType: "image/png" | "image/jpeg" }, signal: AbortSignal): Promise<{ remoteRequestId?: string }> {
+    return this.sendPreparedImage(message, await this.prepareImage(message, image, signal), signal);
   }
 
   public async setTyping(accountId: string, peerId: string, active: boolean, signal: AbortSignal): Promise<void> {
@@ -195,6 +270,13 @@ export class ILinkHttpClient implements Channel {
       return JSON.parse(raw) as T;
     } catch {
       throw new ILinkProtocolError("iLink returned invalid JSON");
+    }
+  }
+
+  private assertImageSuccess(response: { ret?: number; errcode?: number }): void {
+    if ((response.ret ?? 0) !== 0 || (response.errcode ?? 0) !== 0) {
+      // Signed media references must not flow into persisted worker errors.
+      throw new ILinkProtocolError("iLink protocol error", response.errcode ?? response.ret);
     }
   }
 

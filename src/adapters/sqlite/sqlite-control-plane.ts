@@ -1,3 +1,4 @@
+import type { OutboxLease, PreparedImage } from "../../modules/messaging/index.js";
 import { SqliteTaskStore } from "./sqlite-task-store.js";
 import { isTaskInput, type TaskStore } from "../../modules/tasks/index.js";
 import { CommandRouter } from "../../modules/messaging/index.js";
@@ -5,7 +6,7 @@ import type { EndSessionInput } from "../../modules/conversation/index.js";
 import type { ConversationContextEvent } from "../../modules/conversation/index.js";
 import type { InboundFileReference } from "../../modules/artifacts/index.js";
 import { DatabaseSync } from "node:sqlite";
-import type { PathLike } from "node:fs";
+import { chmodSync, existsSync, type PathLike } from "node:fs";
 
 import type { AgentInvocationTrace } from "../../runtime/agent/ports/agent.js";
 import type {
@@ -76,7 +77,9 @@ export class SqliteControlPlane implements ControlPlane {
   public constructor(path: PathLike, options: { traceRetention?: number } = {}) {
     this.traceRetention = options.traceRetention ?? 100;
     this.db = new DatabaseSync(path);
+    if (typeof path === "string" && path !== ":memory:") chmodSync(path, 0o600);
     this.db.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
+    if (typeof path === "string" && path !== ":memory:") for (const suffix of ["-wal", "-shm"]) if (existsSync(path + suffix)) chmodSync(path + suffix, 0o600);
   }
 
   public migrate(): void {
@@ -286,12 +289,23 @@ export class SqliteControlPlane implements ControlPlane {
         if (input.taskSettlement) return;
         throw new Error(`Turn is not running: ${input.turnId}`);
       }
-      if (input.taskSettlement && this.tasks && !this.tasks.settle({ ...input.taskSettlement, turnId: input.turnId })) input = { ...input, chunks: [] };
+      if (input.taskSettlement && this.tasks && !this.tasks.settle({ ...input.taskSettlement, turnId: input.turnId })) input = { ...input, chunks: [], imageIds: [] };
+      const images = [...new Set(input.imageIds ?? [])];
+      if (images.length > 3) throw new Error("Too many reply images");
+      if (images.length) {
+        const settlement = input.taskSettlement;
+        if (!this.tasks || !settlement || settlement.status !== "COMPLETED") throw new Error("Images require approved Task settlement");
+        for (const id of images) {
+          const ready = this.db.prepare(`SELECT 1 FROM image_artifacts a JOIN image_reply_selections s ON s.artifact_id=a.id
+            WHERE a.id=? AND a.owner_id=? AND a.deleted_at IS NULL AND s.owner_id=? AND s.task_id=? AND s.revision=?`).get(id, settlement.ownerId, settlement.ownerId, settlement.taskId, settlement.revision);
+          if (!ready) throw new Error("Reply image unavailable or not selected");
+        }
+      }
       const timestamp = nowIso();
       this.db.prepare(`
         UPDATE turns SET status = ?, final_response = ?, completed_at = ?, lease_owner = NULL,
           lease_expires_at = NULL, updated_at = ? WHERE id = ?
-      `).run(input.chunks.length === 0 ? "SUCCEEDED" : "REPLY_PENDING", input.finalResponse, timestamp, timestamp, input.turnId);
+      `).run(input.chunks.length === 0 && images.length === 0 ? "SUCCEEDED" : "REPLY_PENDING", input.finalResponse, timestamp, timestamp, input.turnId);
 
       if (input.piSessionId !== undefined || input.piSessionFile !== undefined) {
         this.updateSessionPiLocator(text(row, "session_id"), input.piSessionId, input.piSessionFile);
@@ -299,14 +313,15 @@ export class SqliteControlPlane implements ControlPlane {
       const insert = this.db.prepare(`
         INSERT INTO outbox
           (id, turn_id, account_id, peer_id, context_token, chunk_index, text, client_id, run_id,
-           status, attempt_count, next_attempt_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, ?, ?)
+           status, attempt_count, next_attempt_at, created_at, updated_at, artifact_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, ?, ?, ?)
       `);
-      input.chunks.forEach((chunk, index) => {
+      const parts = [...input.chunks.map(chunk => ({ text: chunk, artifactId: null as string | null })), ...images.map(id => ({ text: "", artifactId: id }))];
+      parts.forEach((part, index) => {
         const id = stableId("out", `${input.turnId}_${index}`);
         insert.run(
           id, input.turnId, text(row, "account_id"), text(row, "peer_id"), nullableText(row, "context_token") ?? null,
-          index, chunk, id, text(row, "run_id"), timestamp, timestamp, timestamp,
+          index, part.text, id, text(row, "run_id"), timestamp, timestamp, timestamp, part.artifactId,
         );
       });
       if (input.continuation) this.enqueuePermissionContinuation(input.turnId, input.continuation, timestamp);
@@ -359,13 +374,62 @@ export class SqliteControlPlane implements ControlPlane {
     if (Number(result.changes) !== 1) throw new Error(`Session not found: ${sessionId}`);
   }
 
+  public selectReplyImage(owner: string, taskId: string, revision: number, artifactId?: string): void {
+    this.transaction(() => {
+      const task = this.db.prepare("SELECT 1 FROM tasks WHERE id=? AND owner_id=? AND revision=? AND status='RUNNING'").get(taskId, owner, revision);
+      if (!task) throw new Error("Task changed; image selection rejected");
+      if (!artifactId) { this.db.prepare("DELETE FROM image_reply_selections WHERE owner_id=? AND task_id=? AND revision=?").run(owner, taskId, revision); return; }
+      const image = this.db.prepare("SELECT 1 FROM image_artifacts WHERE id=? AND owner_id=? AND deleted_at IS NULL").get(artifactId, owner);
+      if (!image) throw new Error("Image unavailable");
+      const selected = this.selectedReplyImages(owner, taskId, revision);
+      if (selected.includes(artifactId)) return;
+      if (selected.length >= 3) throw new Error("At most 3 reply images; clear selection before replacing");
+      this.db.prepare("INSERT INTO image_reply_selections VALUES (?,?,?,?,?)").run(owner, taskId, revision, artifactId, selected.length);
+    });
+  }
+
+  public selectedReplyImages(owner: string, taskId: string, revision: number): string[] {
+    return (this.db.prepare("SELECT artifact_id FROM image_reply_selections WHERE owner_id=? AND task_id=? AND revision=? ORDER BY ordinal").all(owner, taskId, revision) as SqliteRow[]).map(row => text(row, "artifact_id"));
+  }
+
+  public protectedReplyImages(): Set<string> {
+    const rows = this.db.prepare(`SELECT artifact_id FROM outbox WHERE artifact_id IS NOT NULL AND status<>'SENT'
+      UNION SELECT a.id FROM image_artifacts a JOIN tasks t ON t.id=a.task_id
+      WHERE t.status NOT IN ('COMPLETED','CANCELLED','FAILED') OR t.updated_at>datetime('now','-7 days')
+      UNION SELECT artifact_id FROM outbox WHERE artifact_id IS NOT NULL AND sent_at>datetime('now','-7 days')`).all() as SqliteRow[];
+    return new Set(rows.map(row => text(row, "artifact_id")));
+  }
+
+  private assertOutboxLease(id: string, lease: OutboxLease): void {
+    if (!this.db.prepare("SELECT 1 FROM outbox WHERE id=? AND status='SENDING' AND lease_owner=? AND attempt_count=? AND lease_expires_at>?").get(id, lease.ownerId, lease.attemptNo, nowIso())) throw new Error("Outbox lease lost");
+  }
+
+  public renewOutboxLease(id: string, lease: OutboxLease, leaseMs: number): boolean {
+    const now = nowIso();
+    return Number(this.db.prepare("UPDATE outbox SET lease_expires_at=? WHERE id=? AND status='SENDING' AND lease_owner=? AND attempt_count=? AND lease_expires_at>?").run(new Date(Date.now()+leaseMs).toISOString(), id, lease.ownerId, lease.attemptNo, now).changes) === 1;
+  }
+
+  public getPreparedImage(id: string, scope: string): PreparedImage | undefined {
+    const row = this.db.prepare("SELECT prepared_image_json FROM outbox WHERE id=? AND prepared_image_scope=?").get(id, scope) as SqliteRow | undefined;
+    const json = row && nullableText(row, "prepared_image_json");
+    return json ? JSON.parse(json) as PreparedImage : undefined;
+  }
+
+  public savePreparedImage(id: string, scope: string, image: PreparedImage, lease: OutboxLease): void {
+    this.transaction(() => {
+      this.assertOutboxLease(id, lease);
+      this.db.prepare("UPDATE outbox SET prepared_image_json=?,prepared_image_scope=? WHERE id=?").run(JSON.stringify(image), scope, id);
+    });
+  }
+
   public claimNextOutbox(ownerId: string, leaseMs: number): ClaimedOutbox | undefined {
     if (leaseMs <= 0) throw new Error("leaseMs must be positive");
     return this.transaction(() => {
       const timestamp = nowIso();
       const row = this.db.prepare(`
-        SELECT id FROM outbox
-        WHERE status IN ('PENDING', 'RETRY_WAIT') AND next_attempt_at <= ?
+        SELECT o.id FROM outbox o
+        WHERE o.status IN ('PENDING', 'RETRY_WAIT') AND o.next_attempt_at <= ?
+          AND NOT EXISTS (SELECT 1 FROM outbox previous WHERE previous.turn_id=o.turn_id AND previous.chunk_index<o.chunk_index AND previous.status<>'SENT')
         ORDER BY next_attempt_at, created_at, chunk_index LIMIT 1
       `).get(timestamp) as SqliteRow | undefined;
       if (row === undefined) return undefined;
@@ -387,9 +451,10 @@ export class SqliteControlPlane implements ControlPlane {
     });
   }
 
-  public markOutboxSent(outboxId: string, remoteRequestId?: string): void {
+  public markOutboxSent(outboxId: string, remoteRequestId?: string, lease?: OutboxLease): void {
     this.transaction(() => {
       const timestamp = nowIso();
+      if (lease) this.assertOutboxLease(outboxId, lease);
       const row = this.db.prepare("SELECT turn_id, attempt_count FROM outbox WHERE id = ? AND status = 'SENDING'").get(outboxId) as SqliteRow | undefined;
       if (row === undefined) throw new Error(`Sending outbox record not found: ${outboxId}`);
       const attemptNo = integer(row, "attempt_count");
@@ -409,9 +474,10 @@ export class SqliteControlPlane implements ControlPlane {
     });
   }
 
-  public markOutboxFailed(outboxId: string, error: Error, retryAt: Date, maxAttempts: number): void {
+  public markOutboxFailed(outboxId: string, error: Error, retryAt: Date, maxAttempts: number, lease?: OutboxLease): void {
     if (maxAttempts <= 0) throw new Error("maxAttempts must be positive");
     this.transaction(() => {
+      if (lease) this.assertOutboxLease(outboxId, lease);
       const row = this.db.prepare("SELECT turn_id, attempt_count FROM outbox WHERE id = ? AND status = 'SENDING'").get(outboxId) as SqliteRow | undefined;
       if (row === undefined) throw new Error(`Sending outbox record not found: ${outboxId}`);
       const attemptNo = integer(row, "attempt_count");
@@ -772,6 +838,7 @@ export class SqliteControlPlane implements ControlPlane {
     return {
       id: text(row, "id"), turnId: text(row, "turn_id"), accountId: text(row, "account_id"),
       peerId: text(row, "peer_id"), chunkIndex: integer(row, "chunk_index"), text: text(row, "text"),
+      ...(nullableText(row, "artifact_id") ? { artifactId: text(row, "artifact_id") } : {}),
       clientId: text(row, "client_id"), runId: text(row, "run_id"), status: text(row, "status") as OutboxRecord["status"],
       attemptCount: integer(row, "attempt_count"), nextAttemptAt: date(text(row, "next_attempt_at")),
       createdAt: date(text(row, "created_at")), ...(contextToken === undefined ? {} : { contextToken }),

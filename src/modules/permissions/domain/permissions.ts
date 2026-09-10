@@ -59,6 +59,7 @@ export interface ExecutionPolicy {
 
 export type ToolOperation =
   | { kind: "read"; path: string }
+  | { kind: "read-binary"; path: string }
   | { kind: "list"; path: string }
   | { kind: "write"; path: string; content: string }
   | { kind: "http"; url: string }

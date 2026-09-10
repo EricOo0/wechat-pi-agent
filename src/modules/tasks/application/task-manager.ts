@@ -14,10 +14,13 @@ function reasonText(reason: string): string {
     interrupted: '执行已中断', execution_or_review_failed: '执行或结果核对未成功', budget_exhausted: '执行轮数已用完',
     conversation_closed: '会话已关闭', user_pause: '用户请求暂停', user_cancel: '用户请求取消' } as Record<string, string>)[reason] ?? reason;
 }
+export interface TaskReplyImages {
+  selected(owner: string, taskId: string, revision: number): Promise<readonly { id: string; mimeType: string; width: number; height: number; bytes: number; createdAt: string }[]>;
+}
 export interface ManagedTaskResult extends AgentRunResult { settlement?: TaskSettlement; publish: boolean }
 export class TaskManager {
   private readonly active = new Map<string, { owner: string; revision: number; controller: AbortController }>();
-  public constructor(private readonly store: TaskStore, private readonly reviewer: TaskReviewer, private readonly permissions: PermissionService) {}
+  public constructor(private readonly store: TaskStore, private readonly reviewer: TaskReviewer, private readonly permissions: PermissionService, private readonly images?: TaskReplyImages) {}
   public list(owner: string): Task[] { return this.store.list(owner); }
   public details(id: string, owner: string) { const task = this.store.get(id, owner); return task ? { task, inputs: this.store.inputs(id, owner), events: this.store.events(id, owner), runs: this.store.runs(id, owner) } : undefined; }
   public abortOwner(owner: string): void { for (const active of this.active.values()) if (active.owner === owner) active.controller.abort(new Error('Permissions changed')); }
@@ -63,8 +66,10 @@ export class TaskManager {
       const inputs = this.store.inputs(task.id, owner);
       request.onEvent?.({ type: "task_run_context", at: new Date(), data: { taskId: task.id, revision: task.revision, task, inputs } });
       execution = await engine.runTurn({ ...request, signal, task: { task, inputs }, beforeModelCall: () => this.store.reserveRound(task.id, owner, task.revision) });
+      execution = { ...execution, replyImages: [] };
       signal.throwIfAborted();
-      const outcome = parseTaskOutcome(execution.text);
+      const attachments = await this.images?.selected(owner, task.id, task.revision) ?? [];
+      const outcome = parseTaskOutcome(execution.text, attachments.length > 0);
       request.onEvent?.({ type: "task_outcome", at: new Date(), data: { taskId: task.id, revision: task.revision, outcome } });
       const current = this.store.get(task.id, owner)!;
       if (current.revision !== task.revision || current.status !== 'RUNNING') throw new TaskControlError('TASK_STALE', 'Task changed');
@@ -72,10 +77,10 @@ export class TaskManager {
       if (outcome.disposition === 'continue') return this.continueOrPause(current, outcome, execution, outcome.remaining);
       const requestId = `${task.id}:${task.revision}:${claimed.turn.id}`;
       if (!this.store.beginReview(task.id, owner, task.revision, requestId)) throw new TaskControlError('TASK_STALE', 'Completion application already handled');
-      const checked = await this.reviewer.review({ id: requestId, task: current, inputs, outcome, evidence: this.store.evidence(task.id, owner), signal, emit: event => request.onEvent?.(event) });
+      const checked = await this.reviewer.review({ id: requestId, task: current, inputs, outcome, evidence: this.store.evidence(task.id, owner), attachments, signal, emit: event => request.onEvent?.(event) });
       this.store.recordReview(task.id, owner, requestId, checked);
       signal.throwIfAborted();
-      if (checked.decision === 'approved') return { ...execution, text: checked.finalResult?.trim() || outcome.result!, publish: true, settlement: this.fromOutcome(task, outcome, 'COMPLETED', { reason: checked.reason }) };
+      if (checked.decision === 'approved') return { ...execution, replyImages: attachments.map(image => image.id), text: checked.finalResult?.trim() || outcome.result || "", publish: true, settlement: this.fromOutcome(task, outcome, 'COMPLETED', { reason: checked.reason }) };
       if (checked.decision === 'waiting') return { ...execution, text: checked.question!, publish: true, settlement: this.fromOutcome(task, outcome, 'WAITING', { question: checked.question!, reason: checked.reason }) };
       return this.continueOrPause(this.store.get(task.id, owner)!, outcome, execution, `${checked.reason}\n${checked.gaps.join('\n')}\n${checked.nextAction ?? ''}`);
     } catch (error) {

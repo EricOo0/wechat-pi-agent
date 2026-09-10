@@ -9,7 +9,7 @@ export interface ToolExecutionOptions {
   executor: SandboxExecutor;
 }
 /** Authorize at execution time; the SDK adapter only converts arguments/results. */
-export async function executeTool(options: ToolExecutionOptions, operation: ToolOperation, signal?: AbortSignal) {
+export async function executeTool(options: ToolExecutionOptions, operation: ToolOperation, signal?: AbortSignal): Promise<{ text: string; details: Record<string, unknown> }> {
   const context = options.context();
   const workspace = options.compiler.workspace(context.subject);
   const snapshot = options.permissions.acquire(context, operation, workspace);

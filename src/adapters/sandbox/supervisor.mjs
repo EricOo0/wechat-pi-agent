@@ -11,11 +11,13 @@ try {
     input += chunk;
     if (input.length > 2000000) throw new Error("Tool input exceeded limit");
   }
-  const { policy, operation } = JSON.parse(input);
+  const { policy, operation, toolTmp: allocatedToolTmp } = JSON.parse(input);
+  const toolTmp = await realpath(allocatedToolTmp);
   const brokerTmp = await realpath(process.env.TMPDIR);
   await mkdir(policy.workspaceRoot, { recursive: true });
   const worker = await realpath(fileURLToPath(new URL("./tool-worker.mjs", import.meta.url)));
-  let command = `${quote(process.execPath)} ${quote(worker)}`;
+  // sandbox-runtime supplies its own TMPDIR in the wrapper; set the worker value inside it.
+  let command = `/usr/bin/env ${quote(`TMPDIR=${toolTmp}`)} ${quote(process.execPath)} ${quote(worker)}`;
   if (policy.mode !== "full-access") {
     if (process.platform !== "darwin" && process.platform !== "linux") throw new Error("Sandbox platform unsupported");
     const dependencies = await SandboxManager.checkDependenciesAsync();
@@ -25,8 +27,8 @@ try {
     await SandboxManager.initialize(SandboxRuntimeConfigSchema.parse({
       filesystem: {
         denyRead: ["/**", ...policy.deniedPaths, brokerTmp],
-        allowRead: ["/usr", "/bin", "/sbin", "/System", "/Library/Apple", "/opt/homebrew/Cellar", "/opt/homebrew/opt", "/usr/local/lib", "/dev", "/private/etc", "/etc", runtime, dirname(runtime), worker, ...policy.readRoots],
-        allowWrite: policy.writeRoots,
+        allowRead: ["/usr", "/bin", "/sbin", "/System", "/Library/Apple", "/opt/homebrew/Cellar", "/opt/homebrew/opt", "/usr/local/lib", "/dev", "/private/etc", "/etc", runtime, dirname(runtime), worker, toolTmp, ...policy.readRoots],
+        allowWrite: [...policy.writeRoots, toolTmp],
         denyWrite: [
           ...policy.deniedPaths, ...(policy.protectedWritePaths ?? []), worker, runtime, brokerTmp,
           // A later trusted supervisor loads this runtime and its shared libraries.
@@ -42,7 +44,7 @@ try {
     if (!SandboxManager.isSandboxingEnabled()) throw new Error("Sandbox failed to initialize");
   }
   const child = spawn("/bin/bash", ["--noprofile", "--norc", "-c", command], {
-    cwd: policy.workspaceRoot, env: { ...process.env, TMPDIR: policy.workspaceRoot }, stdio: ["pipe", "pipe", "pipe"],
+    cwd: policy.workspaceRoot, env: { ...process.env, TMPDIR: toolTmp }, stdio: ["pipe", "pipe", "pipe"],
   });
   child.stdout.pipe(process.stdout);
   child.stderr.pipe(process.stderr);

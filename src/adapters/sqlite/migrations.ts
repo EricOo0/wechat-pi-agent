@@ -249,4 +249,16 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
     CREATE TABLE task_reviews(id TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id),revision INTEGER NOT NULL,created_at TEXT NOT NULL,result_json TEXT) STRICT;
     CREATE TABLE task_control_receipts(message_id TEXT PRIMARY KEY,reply TEXT NOT NULL,task_id TEXT REFERENCES tasks(id),action TEXT NOT NULL) STRICT;`,
   },
+  {
+    version: 10,
+    sql: `
+    CREATE TABLE image_artifacts(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,task_id TEXT NOT NULL,revision INTEGER NOT NULL,source_turn_id TEXT NOT NULL,tool_call_id TEXT NOT NULL,bytes INTEGER NOT NULL,sha256 TEXT NOT NULL,mime_type TEXT NOT NULL,width INTEGER NOT NULL,height INTEGER NOT NULL,created_at TEXT NOT NULL,deleted_at TEXT,UNIQUE(owner_id,source_turn_id,tool_call_id)) STRICT;
+    CREATE TABLE image_reply_selections(owner_id TEXT NOT NULL,task_id TEXT NOT NULL,revision INTEGER NOT NULL,artifact_id TEXT NOT NULL REFERENCES image_artifacts(id),ordinal INTEGER NOT NULL,PRIMARY KEY(owner_id,task_id,revision,artifact_id),UNIQUE(owner_id,task_id,revision,ordinal)) STRICT;
+    ALTER TABLE outbox ADD COLUMN artifact_id TEXT REFERENCES image_artifacts(id);
+    ALTER TABLE outbox ADD COLUMN prepared_image_json TEXT;
+    ALTER TABLE outbox ADD COLUMN prepared_image_scope TEXT;
+    CREATE INDEX outbox_turn_order_idx ON outbox(turn_id,chunk_index,status);
+    CREATE INDEX image_owner_idx ON image_artifacts(owner_id,created_at);
+    `,
+  },
 ];

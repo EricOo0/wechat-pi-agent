@@ -1,3 +1,7 @@
+import { ImageReplyService, type ImageArtifact } from "../modules/artifacts/index.js";
+import { SqliteImageArtifactRepository } from "../adapters/sqlite/sqlite-image-artifact-repository.js";
+import { LocalImageStorage } from "../adapters/filesystem/local-image-storage.js";
+import { SharpImageValidator } from "../adapters/filesystem/sharp-image-validator.js";
 import { TaskRoutes } from "../entrypoints/admin-http/task-routes.js";
 import { TaskManager } from "../modules/tasks/index.js";
 import { PiTaskReviewer } from "../adapters/pi/pi-task-reviewer.js";
@@ -91,10 +95,13 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const fileRoot = resolve(config.dataDir, "files");
   const fileStorage = new LocalFileStorage(fileRoot);
   const saveFiles = new SaveInboundFiles(fileRepository, fileStorage, new ILinkFileDownloader(config.ilink.cdnBaseUrl));
+  const imageRoot = resolve(config.dataDir, "outbound-images");
+  const imageRepository = new SqliteImageArtifactRepository(config.databasePath);
+  const imageService = new ImageReplyService(imageRepository, new LocalImageStorage(imageRoot), new SharpImageValidator());
   const executor = new LocalSandboxExecutor();
   const permissionStore = new SqlitePermissionRepository(config.permissionDatabasePath);
   const databaseFiles = [config.databasePath, config.permissionDatabasePath].flatMap((path) => [path, `${path}-wal`, `${path}-shm`, `${path}-journal`]);
-  const deniedPaths = [memoryRoot, resolve(config.dataDir, ".service.lock"), fileRoot, ...databaseFiles, resolve(config.dataDir, "credentials"), config.piSessionDir,
+  const deniedPaths = [imageRoot, memoryRoot, resolve(config.dataDir, ".service.lock"), fileRoot, ...databaseFiles, resolve(config.dataDir, "credentials"), config.piSessionDir,
     config.inboundMediaDir, config.settingsPath, config.pi.authPath, config.pi.modelsStorePath,
     resolve(config.workspaceRoot, ".env"), resolve(process.cwd(), ".env"), resolve(config.dataDir, "executor-id")];
   const protectedWritePaths = ["src", "dist", "scripts", "node_modules", "package.json", "package-lock.json", ".git", "tsconfig.json", "tsconfig.build.json"]
@@ -145,6 +152,10 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
         logger,
         runtime, models, gate, modelOwner: managementOwner,
         files: { repository: fileRepository, storage: fileStorage },
+        images: { service: imageService,
+          select: (image: ImageArtifact) => control.selectReplyImage(image.ownerId, image.taskId, image.revision, image.id),
+          clear: (owner: string, task: string, revision: number) => control.selectReplyImage(owner, task, revision),
+        },
         memory,
         cwd: config.workspaceRoot,
         provider: storedSelection.providerId,
@@ -164,7 +175,13 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   }
 
   const taskStore = control.enableTasks((message, sessionId) => subjectKey(permissions.context(message, sessionId).subject));
-  const taskManager = new TaskManager(taskStore, config.dryRun ? new DryRunTaskReviewer() : new PiTaskReviewer(runtime, models, gate), permissions);
+  const taskManager = new TaskManager(taskStore, config.dryRun ? new DryRunTaskReviewer() : new PiTaskReviewer(runtime, models, gate), permissions, {
+    selected: async (owner, taskId, revision) => {
+      const images = imageService.assertReady(owner, control.selectedReplyImages(owner, taskId, revision));
+      for (const image of images) await imageService.readForDelivery(image.id);
+      return images;
+    },
+  });
   const senderPolicy = config.dryRun ? new AllowAllSendersPolicy() : new ExactSenderPolicy(allowedSender);
   const ingest = new IngestMessage(control, senderPolicy, telemetry, permissions, taskManager);
   const ownerId = `worker_${randomUUID()}`;
@@ -172,7 +189,14 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
   const expireSessions = new ExpireIdleSessions(control, endSession);
   const runtimeAgent = new AgentRuntime(agent);
   const runNextTurn = new RunNextTurn(control, runtimeAgent, channel, new ReplyChunker(), { ownerId, leaseMs: 10 * 60_000 }, telemetry, undefined, permissions, saveFiles, endSession, config.modelManagementEnabled ? models : undefined, taskManager);
-  const deliverReply = new DeliverReply(control, channel, { ownerId, leaseMs: 60_000 }, undefined, telemetry);
+  const deliverReply = new DeliverReply(control, channel, { ownerId, leaseMs: 60_000,
+    loadImage: async id => {
+      const image = imageRepository.getById(id);
+      if (!image) throw new Error("待发送图片已不可用");
+      return { data: await imageService.readForDelivery(id), mimeType: image.mimeType };
+    },
+    onImageEvent: (turnId, data) => control.appendAgentEvent(turnId, { type: "image_delivery", at: new Date(), data }),
+  }, undefined, telemetry);
   const recover = new RecoverInterruptedWork(control);
   const memoryGenerator = config.dryRun ? {
     extract: () => Promise.resolve({ content: "Dry-run session: no durable facts extracted.", shouldMerge: false }),
@@ -212,6 +236,8 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
       endSession.all("recovery");
       memoryJobs.recover();
       logger.info({ recovered: recover.execute() }, "startup recovery complete");
+      try { await imageService.sweepOrphans(); await imageService.cleanup(new Date(Date.now() - 7 * 86400_000).toISOString(), id => control.protectedReplyImages().has(id)); }
+      catch { logger.warn("Image retention cleanup failed; data retained for next startup"); }
       logger.info({ host: config.adminHost, port: config.adminPort, accountId }, "wechat pi agent started");
       const idle = new IdleSessionLoop(expireSessions);
       await runBackgroundLoops(signal, logger, [
@@ -220,6 +246,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
         (stop, work) => outboxLoop.run(stop, work),
         (stop, work) => memoryLoop.run(stop, work),
         stop => idle.run(stop),
+
       ]);
     },
     async close(endSessions = true): Promise<void> {
@@ -235,6 +262,7 @@ export async function buildApp(config: AppConfig): Promise<AppRuntime> {
         memoryJobs.close();
         permissionStore.close();
         fileRepository.close();
+        imageRepository.close();
         control.close();
         logger.info("wechat pi agent stopped");
       }

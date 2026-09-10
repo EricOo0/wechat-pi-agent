@@ -1,5 +1,6 @@
-import { realpath, readFile, writeFile, readdir, mkdir, stat } from "node:fs/promises";
-import { resolve, dirname, sep } from "node:path";
+import { realpath, readFile, writeFile, readdir, mkdir, stat, open, lstat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { resolve, dirname, basename, sep } from "node:path";
 import { spawn } from "node:child_process";
 
 const MAX = 512000;
@@ -23,6 +24,33 @@ async function pathFor(policy, path, write = false) {
   if (denies.some((root) => within(target, root)) || !roots.some((root) => within(target, root))) throw new Error("File permission denied");
   return target;
 }
+// Image export retains protected-path denials even when ordinary Full Access tools bypass them.
+async function imageSource(policy, source) {
+  const requested = resolve(policy.workspaceRoot, source);
+  const parent = await realpath(dirname(requested));
+  const target = resolve(parent, basename(requested));
+  const denies = await Promise.all(policy.deniedPaths.map(async (path) => {
+    try { return await canonical(path); } catch { return resolve(path); }
+  }));
+  if (denies.some((root) => within(target, root) || within(requested, root))) throw new Error("Image file permission denied");
+  await pathFor(policy, target);
+  const parentStat = await stat(parent);
+  const sourceStat = await lstat(target);
+  if (!sourceStat.isFile()) throw new Error("Image source must be a regular file without symlinks");
+  return { target, parent, parentStat, sourceStat };
+}
+const sameFile = (left, right) => left.dev === right.dev && left.ino === right.ino;
+async function verifyImageSource(source, file) {
+  if (await realpath(dirname(source.target)) !== source.parent || !sameFile(source.parentStat, await stat(source.parent))) {
+    throw new Error("Image source directory changed during read");
+  }
+  const current = await lstat(source.target);
+  const opened = await file.stat();
+  if (!current.isFile() || !sameFile(source.sourceStat, current) || !sameFile(current, opened)) {
+    throw new Error("Image source changed during read");
+  }
+  return opened;
+}
 async function run(command, args) {
   return await new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -44,6 +72,27 @@ try {
       const path = await pathFor(policy, op.path);
       if ((await stat(path)).size > MAX) throw new Error("File exceeds read limit");
       result = { text: await readFile(path, "utf8") }; break;
+    }
+    case "read-binary": {
+      const source = await imageSource(policy, op.path);
+      const file = await open(source.target, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
+      try {
+        const metadata = await verifyImageSource(source, file);
+        const limit = 10 * 1024 * 1024;
+        if (!metadata.isFile()) throw new Error("Image source must be a regular file");
+        if (metadata.size > limit) throw new Error("Image exceeds read limit");
+        const bytes = Buffer.alloc(limit + 1);
+        let length = 0;
+        while (length < bytes.length) {
+          const { bytesRead } = await file.read(bytes, length, bytes.length - length, null);
+          if (bytesRead === 0) break;
+          length += bytesRead;
+        }
+        if (length > limit) throw new Error("Image exceeds read limit");
+        await verifyImageSource(source, file);
+        result = { text: bytes.subarray(0, length).toString("base64"), details: { encoding: "base64", byteLength: length } };
+      } finally { await file.close(); }
+      break;
     }
     case "list": result = { text: (await readdir(await pathFor(policy, op.path))).slice(0, 1000).join("\n") }; break;
     case "write": {

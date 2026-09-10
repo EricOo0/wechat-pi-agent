@@ -23,7 +23,14 @@ export class LocalSandboxExecutor implements SandboxExecutor {
     delete (env as NodeJS.ProcessEnv).NODE_OPTIONS;
     return new Promise((resolve, reject) => {
       const brokerTmp = realpathSync(mkdtempSync("/tmp/pi-srt-"));
-      const cleanup = () => { try { rmSync(brokerTmp, { recursive: true, force: true }); } catch { /* process may still release temporary files */ } };
+      let toolTmp: string;
+      try { toolTmp = realpathSync(mkdtempSync("/tmp/pi-tool-")); }
+      catch (error) { rmSync(brokerTmp, { recursive: true, force: true }); reject(error instanceof Error ? error : new Error(String(error))); return; }
+      const cleanup = () => {
+        for (const path of [brokerTmp, toolTmp]) {
+          try { rmSync(path, { recursive: true, force: true }); } catch { /* process may still release temporary files */ }
+        }
+      };
       let child: ChildProcess;
       try { child = spawn(process.execPath, [fileURLToPath(new URL("./supervisor.mjs", import.meta.url))], {
         env: { ...env, TMPDIR: brokerTmp }, detached: true, stdio: ["pipe", "pipe", "pipe"],
@@ -41,7 +48,7 @@ export class LocalSandboxExecutor implements SandboxExecutor {
       signal?.addEventListener("abort", cancel, { once: true });
       child.stdout!.on("data", (chunk: Buffer) => {
         output += chunk.toString();
-        if (Buffer.byteLength(output) > 1100000) { failure = new Error("Tool output exceeded limit"); kill(); }
+        if (Buffer.byteLength(output) > (operation.kind === "read-binary" ? 14_000_000 : 1_100_000)) { failure = new Error("Tool output exceeded limit"); kill(); }
       });
       child.stderr!.on("data", (chunk: Buffer) => { errorOutput = (errorOutput + chunk.toString()).slice(-4096); });
       child.on("error", (error) => { failure = error; });
@@ -61,7 +68,7 @@ export class LocalSandboxExecutor implements SandboxExecutor {
           resolve({ text: value.text, ...(value.details ? { details: value.details } : {}) });
         } catch (error) { reject(error instanceof Error ? error : new Error("Invalid worker response")); }
       });
-      child.stdin!.end(JSON.stringify({ policy, operation }));
+      child.stdin!.end(JSON.stringify({ policy, operation, toolTmp }));
     });
   }
 

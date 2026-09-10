@@ -15,7 +15,7 @@ export class PiTaskReviewer implements TaskReviewer {
       const binding = this.models.repository.bind(id, request.task.ownerId, selection);
       const model = this.runtime.getModel(binding.providerId, binding.modelId);
       if (!model) throw new Error('Review model unavailable');
-      const payload = { task: request.task, inputs: request.inputs, completion: request.outcome, evidence: [...request.evidence], evidenceTruncated: false };
+      const payload = { task: request.task, inputs: request.inputs, completion: request.outcome, attachments: request.attachments ?? [], evidence: [...request.evidence], evidenceTruncated: false };
       while (JSON.stringify(payload).length > 160_000 && payload.evidence.length) { payload.evidence.shift(); payload.evidenceTruncated = true; }
       if (JSON.stringify(payload).length > 160_000) throw new Error('Task context exceeds review input budget');
       const stream = traceModelCalls((m, c, o) => this.runtime.streamSimple(m, c, { ...o, reasoning: 'low', maxRetries: 0 }),

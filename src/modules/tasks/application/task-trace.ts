@@ -7,7 +7,7 @@ export interface TaskTraceNode {
   spans?: TraceSpan[];
   lifecycle?: unknown[];
 }
-interface TurnDetails { turn?: { startedAt?: string | Date; completedAt?: string | Date; finalResponse?: string }; steps?: TraceEvent[]; outbox?: Array<{ id: string; status: string; createdAt: string | Date }> }
+interface TurnDetails { turn?: { startedAt?: string | Date; completedAt?: string | Date; finalResponse?: string }; steps?: TraceEvent[]; outbox?: Array<{ id: string; status: string; createdAt: string | Date; artifactId?: string }> }
 function usage(spans: TraceSpan[], expected: number) {
   let tokens = 0; let known = 0; let durationMs = 0; let timed = 0;
   for (const span of spans) {
@@ -42,7 +42,7 @@ export function taskTrace(tasks: TaskManager, query: TraceQuery, id: string, own
     for (const span of reviewSpans) nodes.push({ id: span.id, kind: 'review', at: span.start === null ? run.queuedAt : new Date(span.start).toISOString(), title: '独立 Review', status: span.status, turnId: run.turnId, revision: run.revision, superseded: run.revision !== details.task.revision, data: span, spans: [span] });
     for (const message of raw?.outbox ?? []) {
       deliveries.push(message);
-      nodes.push({ id: 'delivery:' + message.id, kind: 'delivery', at: new Date(message.createdAt).toISOString(), title: '回复投递', status: message.status, turnId: run.turnId, data: message });
+      nodes.push({ id: 'delivery:' + message.id, kind: 'delivery', at: new Date(message.createdAt).toISOString(), title: message.artifactId ? '图片投递' : '文字投递', status: message.status, turnId: run.turnId, data: message });
     }
   }
   for (const [index, event] of [...details.events].reverse().entries()) {

@@ -1,5 +1,7 @@
 # 操作与排障
 
+- [截图与微信图片回复](image-replies.md)：启用、实际截图环境、Task 审核、图片投递与失败排查。
+
 - [TypeScript 源码目录迁移检查](source-relocation.md)：模块路径、cwd 路径与构建资源的区别。
 
 - [项目文档自动维护](project-workflow.md)：Skill、提交检查与 Codex 收尾 Hook。

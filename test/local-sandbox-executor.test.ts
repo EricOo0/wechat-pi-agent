@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile, mkdir, stat, truncate, symlink } from "node:fs/promises";
 import { createServer } from "node:http";
 import { LocalSandboxExecutor } from "../src/adapters/sandbox/local-sandbox-executor.js";
 import type { ExecutionPolicy } from "../src/modules/permissions/domain/permissions.js";
@@ -26,6 +26,58 @@ describe.skipIf(process.platform !== "darwin")("Seatbelt tool executor", () => {
     const result = await executor.execute(policy, { kind: "bash", command: `ln -s '${outside}' link; cat link/secret; echo no > '${outside}/new'` });
     expect(result.details?.exitCode).not.toBe(0);
     expect(result.text).toMatch(/not permitted|Permission denied/);
+  });
+  it("uses short isolated temporary directories and cleans them after each call", async () => {
+    const longRoot = `${root}/${"workspace".repeat(18)}`;
+    await mkdir(longRoot);
+    const paths: string[] = [];
+    for (const mode of ["restricted", "full-access"] as const) {
+      const result = await executor.execute({ ...policy, mode, workspaceRoot: longRoot }, {
+        kind: "bash", command: 'printf "%s" "$TMPDIR"; touch "$TMPDIR/check"',
+      });
+      expect(result.details?.exitCode, result.text).toBe(0);
+      expect(result.text).toMatch(/^\/(private\/)?tmp\/pi-tool-/);
+      expect(Buffer.byteLength(result.text)).toBeLessThan(40);
+      expect(result.text).not.toBe(longRoot);
+      await expect(stat(result.text)).rejects.toThrow();
+      paths.push(result.text);
+    }
+    expect(new Set(paths).size).toBe(2);
+  });
+  it("imports binary bytes under read permissions with a bounded size", async () => {
+    const bytes = Buffer.alloc(900_000, 0xff); // Above the text read and output limits.
+    await writeFile(`${root}/image`, bytes);
+    const result = await executor.execute(policy, { kind: "read-binary", path: "image" });
+    expect(Buffer.from(result.text, "base64")).toEqual(bytes);
+    expect(result.details).toEqual({ encoding: "base64", byteLength: bytes.length });
+    await writeFile(`${outside}/private-image`, bytes);
+    await expect(executor.execute(policy, { kind: "read-binary", path: `${outside}/private-image` })).rejects.toThrow();
+    await expect(executor.execute(policy, { kind: "read-binary", path: root })).rejects.toThrow("regular file");
+    await truncate(`${root}/image`, 10 * 1024 * 1024 + 1);
+    await expect(executor.execute(policy, { kind: "read-binary", path: "image" })).rejects.toThrow("read limit");
+  });
+  it("retains protected image-export paths in Full Access and rejects symlink sources", async () => {
+    await mkdir(`${outside}/protected`);
+    await writeFile(`${outside}/protected/secret.png`, "private bytes");
+    await writeFile(`${root}/ordinary.png`, "ordinary bytes");
+    await symlink(`${root}/ordinary.png`, `${root}/leaf-link.png`);
+    await symlink(`${outside}/protected`, `${root}/protected-link`);
+    const full = { ...policy, mode: "full-access" as const, deniedPaths: [`${outside}/protected`] };
+    await expect(executor.execute(full, { kind: "read-binary", path: `${outside}/protected/secret.png` })).rejects.toThrow("permission denied");
+    await expect(executor.execute(full, { kind: "read-binary", path: "protected-link/secret.png" })).rejects.toThrow("permission denied");
+    await expect(executor.execute(full, { kind: "read-binary", path: "leaf-link.png" })).rejects.toThrow("without symlinks");
+    expect(Buffer.from((await executor.execute(full, { kind: "read-binary", path: "ordinary.png" })).text, "base64").toString()).toBe("ordinary bytes");
+    // Export restrictions do not change existing Full Access shell/read behavior.
+    expect((await executor.execute(full, { kind: "read", path: `${outside}/protected/secret.png` })).text).toBe("private bytes");
+  });
+  it("cancels image reads through the managed execution signal", async () => {
+    await writeFile(`${root}/image`, "image bytes");
+    const controller = new AbortController();
+    const pending = executor.execute(policy, { kind: "read-binary", path: "image" }, controller.signal);
+    const rejection = expect(pending).rejects.toThrow(/cancelled/);
+    controller.abort();
+    await rejection;
+    await expect(executor.execute(policy, { kind: "read-binary", path: "image" }, controller.signal)).rejects.toThrow("cancelled");
   });
   it("does not leak environment secrets and blocks direct network egress", async () => {
     process.env.PI_EXECUTOR_TEST_SECRET = "must-not-leak";

@@ -36,6 +36,8 @@ export interface AgentRunRequest {
 export type AgentContextRequest = Pick<AgentRunRequest, "session" | "permissionContext" | "contextEvents" | "signal" | "onSessionReady" | "onEvent">;
 
 export interface AgentRunResult {
+  /** Set only by TaskManager after approval, never trusted from model output. */
+  replyImages?: readonly string[];
   text: string;
   piSessionId?: string;
   piSessionFile?: string;

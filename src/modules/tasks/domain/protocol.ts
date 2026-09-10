@@ -6,9 +6,9 @@ function parse(text: string): unknown {
   try { return JSON.parse(text.trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")); }
   catch { throw new TaskControlError("TASK_PROTOCOL", "任务结果不是有效 JSON"); }
 }
-export function parseTaskOutcome(text: string): TaskOutcome {
+export function parseTaskOutcome(text: string, hasVerifiedImages = false): TaskOutcome {
   const result = outcome.safeParse(parse(text));
-  if (!result.success || (result.data.disposition === "waiting" && !result.data.question?.trim()) || (result.data.disposition === "request_completion" && !result.data.result?.trim())) throw new TaskControlError("TASK_PROTOCOL", "任务结果缺少必要字段");
+  if (!result.success || (result.data.disposition === "waiting" && !result.data.question?.trim()) || (result.data.disposition === "request_completion" && !result.data.result?.trim() && !hasVerifiedImages)) throw new TaskControlError("TASK_PROTOCOL", "任务结果缺少必要字段");
   const data = result.data;
   return { disposition: data.disposition, progress: data.progress, remaining: data.remaining, evidence: data.evidence, ...(data.question === undefined ? {} : { question: data.question }), ...(data.result === undefined ? {} : { result: data.result }) };
 }

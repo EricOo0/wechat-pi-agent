@@ -1,0 +1,137 @@
+{
+  "date": "2026-09-10T09:49:16.226Z",
+  "provider": "openai-codex",
+  "model": "gpt-5.6-sol",
+  "promptSha256": "85ff03b45a1f91d098db6fe21266f41a8c01f29fc8ce87e10abaffcee905b9f7",
+  "passed": true,
+  "results": [
+    {
+      "id": "screenshot-no-pixel-access",
+      "expected": [
+        "approved"
+      ],
+      "passed": true,
+      "review": {
+        "decision": "approved",
+        "reason": "浏览器截图已成功生成，并有有效的 PNG 附件可供发送。",
+        "gaps": [],
+        "question": "",
+        "nextAction": "",
+        "finalResult": ""
+      }
+    },
+    {
+      "id": "document-screenshot-summary",
+      "expected": [
+        "approved"
+      ],
+      "passed": true,
+      "review": {
+        "decision": "approved",
+        "reason": "已成功定位最近创建的文档，并提供其首页截图附件。",
+        "gaps": [],
+        "question": "",
+        "nextAction": "",
+        "finalResult": ""
+      }
+    },
+    {
+      "id": "generated-chart",
+      "expected": [
+        "approved"
+      ],
+      "passed": true,
+      "review": {
+        "decision": "approved",
+        "reason": "已生成并注册有效的 PNG 示意图附件，满足用户要求；用户明确无需额外检查画面。",
+        "gaps": [],
+        "question": "",
+        "nextAction": "",
+        "finalResult": "示意图已准备好。"
+      }
+    },
+    {
+      "id": "missing-image",
+      "expected": [
+        "revise"
+      ],
+      "passed": true,
+      "review": {
+        "decision": "revise",
+        "reason": "用户要求发送截图，但当前没有已注册的图片附件；仅提供文件路径不足以交付图片。",
+        "gaps": [
+          "缺少已注册的截图附件"
+        ],
+        "question": "",
+        "nextAction": "将 output/screenshot.png 注册并作为图片附件发送。",
+        "finalResult": ""
+      }
+    },
+    {
+      "id": "known-wrong-page",
+      "expected": [
+        "revise",
+        "waiting"
+      ],
+      "passed": true,
+      "review": {
+        "decision": "waiting",
+        "reason": "当前截图来自登录页，项目文档正文未能访问，因此未满足截图请求。",
+        "gaps": [
+          "缺少项目文档正文截图"
+        ],
+        "question": "请先登录文档平台，或提供无需登录即可访问的文档链接。",
+        "nextAction": "",
+        "finalResult": ""
+      }
+    },
+    {
+      "id": "explicit-visual-check",
+      "expected": [
+        "revise",
+        "waiting"
+      ],
+      "passed": true,
+      "review": {
+        "decision": "revise",
+        "reason": "用户明确要求先确认图片中每一行文字都清晰可读，但执行记录表明尚未进行可读性检查。",
+        "gaps": [
+          "未逐行检查截图中文字的清晰度与可读性。"
+        ],
+        "question": "",
+        "nextAction": "检查截图中每一行文字；若均清晰可读，再附图发送并确认；若有模糊或截断，重新截图。",
+        "finalResult": ""
+      }
+    },
+    {
+      "id": "previous-impossible-review",
+      "expected": [
+        "approved"
+      ],
+      "passed": true,
+      "review": {
+        "decision": "approved",
+        "reason": "已成功生成并登记浏览器截图附件，满足用户仅发送截图的要求。",
+        "gaps": [],
+        "question": "",
+        "nextAction": "",
+        "finalResult": ""
+      }
+    },
+    {
+      "id": "image-only",
+      "expected": [
+        "approved"
+      ],
+      "passed": true,
+      "review": {
+        "decision": "approved",
+        "reason": "已生成并注册图片附件，且用户要求仅发送图片。",
+        "gaps": [],
+        "question": "",
+        "nextAction": "",
+        "finalResult": ""
+      }
+    }
+  ]
+}

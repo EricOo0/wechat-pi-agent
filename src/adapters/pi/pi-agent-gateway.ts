@@ -1,3 +1,6 @@
+import { createImageTools } from "./tools/image-tools.js";
+import type { ImageReplyService, ImageArtifact } from "../../modules/artifacts/index.js";
+import { executeTool } from "../../modules/tools/index.js";
 import { TASK_EXECUTION_PROTOCOL } from "../../modules/tasks/index.js";
 import { ModelManagementError } from "../../modules/models/index.js";
 import type { ModelManagement } from "../../modules/models/index.js";
@@ -39,6 +42,7 @@ export interface PiAgentGatewayOptions {
   gate?: ProviderRequestGate;
   logger?: Pick<Logger, "info" | "warn">;
   memory?: UserMemoryService;
+  images?: { service: ImageReplyService; select(image: ImageArtifact): void; clear(owner: string, taskId: string, revision: number): void };
   files?: { repository: UserFileRepository; storage: FileStorage };
   cwd: string;
   provider: string;
@@ -282,6 +286,30 @@ export class PiAgentGateway implements Agent {
           selectedFiles.add(id);
           this.sessions.get(request.session.id)?.request?.onEvent?.({ type: "file_selected", at: new Date(), data: { fileId: id, toolCallId, status: "succeeded" } });
         }));
+    }
+    if (this.options.images) {
+      const images = this.options.images;
+      const current = () => {
+        const active = this.sessions.get(request.session.id);
+        const context = active?.context ?? initialContext;
+        const taskRequest = active?.request;
+        if (!taskRequest?.task || !context.taskTurnId) throw new Error("图片回复需要正在执行的 Task");
+        return { ownerId: subjectKey(context.subject), taskId: taskRequest.task.task.id, revision: taskRequest.task.task.revision, turnId: context.taskTurnId };
+      };
+      customTools.push(...createImageTools(images.service, current, async (path, signal) => {
+        const context = () => this.sessions.get(request.session.id)?.context ?? initialContext;
+        const revision = this.options.permissions.snapshot(context()).revision;
+        const result = await executeTool({ context, permissions: this.options.permissions, compiler: this.compiler, executor: this.options.executor }, { kind: "read-binary", path }, signal);
+        signal?.throwIfAborted();
+        if (this.options.permissions.snapshot(context()).revision !== revision) throw new Error("Permissions changed; image read cancelled");
+        if (result.details.encoding !== "base64") throw new Error("Invalid image read response");
+        const bytes = Buffer.from(result.text, "base64");
+        if (bytes.length !== result.details.byteLength) throw new Error("Incomplete image read");
+        return bytes;
+      }, image => {
+        images.select(image);
+        this.sessions.get(request.session.id)?.request?.onEvent?.({ type: "image_selected", at: new Date(), data: { artifactId: image.id, mimeType: image.mimeType, width: image.width, height: image.height, bytes: image.bytes, status: "selected", delivered: false } });
+      }, context => images.clear(context.ownerId, context.taskId, context.revision)));
     }
     if (this.options.memory) customTools.push(...createMemoryTools(this.options.memory, () => subjectKey(this.sessions.get(request.session.id)?.context.subject ?? initialContext.subject)));
     const activeToolNames = customTools.map((tool) => tool.name);

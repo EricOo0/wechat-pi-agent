@@ -46,3 +46,17 @@ it('builds model/tool parentage from actual returned toolCall IDs and retains re
  expect(spans).toHaveLength(3);expect(spans[0]).toMatchObject({kind:'model',status:'succeeded',usage:{totalTokens:42},input:{providerRequest:{input:['actual input']}}});
  expect(spans[1]?.parentId).toBe(spans[0]?.id);expect(spans[2]).toMatchObject({kind:'model',status:'running'});
 });
+
+
+it("keeps selected images distinct from upload and confirmed delivery", () => {
+  const spans = buildTraceSpans([
+    { event_type: "image_selected", ordinal: 0, eventData: { artifactId: "image", status: "selected", delivered: false } },
+    { event_type: "image_delivery", ordinal: 1, eventData: { eventId: "out:1:upload", artifactId: "image", stage: "upload", status: "started" } },
+    { event_type: "image_delivery", ordinal: 2, eventData: { eventId: "out:1:upload", artifactId: "image", stage: "upload", status: "succeeded" } },
+    { event_type: "image_delivery", ordinal: 3, eventData: { eventId: "out:1:send", artifactId: "image", stage: "send", status: "failed" } },
+  ], "REPLY_PENDING");
+  expect(spans).toHaveLength(3);
+  expect(spans[0]).toMatchObject({ name: "登记回复图片（未发送）", output: { delivered: false } });
+  expect(spans[1]).toMatchObject({ name: "上传回复图片", status: "succeeded" });
+  expect(spans[2]).toMatchObject({ name: "发送回复图片", status: "failed" });
+});

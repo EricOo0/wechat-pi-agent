@@ -10,6 +10,7 @@
 | W-001 项目规格与知识维护自动化 | [现行规格](project-workflow/spec.md) |
 | M-001 模型与认证管理 | [现行规格](model-provider-management/spec.md) |
 | F-001 用户文件与 PDF | [现行规格](pdf-attachments/spec.md) |
+| F-002 截图与微信图片回传 | [规格与实现核对](image-delivery/spec.md) |
 | 用户记忆 | [运行说明](../user-memory.md) |
 | H-001 通用 Task 执行与控制 | [规格与验收](agent-harness/spec.md) |
 

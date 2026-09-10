@@ -113,6 +113,7 @@ export class RunNextTurn {
         turnId: turn.id,
         finalResponse: agentResult.text,
         chunks,
+        imageIds: taskResult?.publish ? taskResult.replyImages ?? [] : [],
         ...(taskResult?.settlement ? { taskSettlement: taskResult.settlement } : {}),
         ...(agentResult.piSessionId === undefined ? {} : { piSessionId: agentResult.piSessionId }),
         ...(agentResult.piSessionFile === undefined ? {} : { piSessionFile: agentResult.piSessionFile }),

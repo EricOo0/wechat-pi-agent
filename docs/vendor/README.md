@@ -1,7 +1,9 @@
 # 外部源码依据
 
-目前未同步外部源码。运行依赖由 package.json 和 package-lock.json 管理；这里仅保存有实际需求的选择性源码参考。
+目前未复制外部源码。运行依赖由 package.json 和 package-lock.json 管理；这里仅保存有实际需求的选择性源码参考。
 
 需要同步时创建 `<dependency>/SOURCE.md`，记录官方来源、精确版本或 commit、选取文件、日期、用途与关联需求、许可证要求、本地修改及可复现同步方法。
 
 只引入必要文件，升级时对照版本和差异；不复制整个依赖目录，不保存凭证或未经授权的源码。
+
+- [iLink 图片上传协议依据](ilink-image-upload/SOURCE.md)：固定 Tencent 上游 commit 的上传、加密与消息字段核验。

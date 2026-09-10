@@ -1,5 +1,12 @@
 # 下一步与当前状态
 
+## F-002 截图与微信图片回传
+
+- 状态：implemented。本地实现与完整检查通过；未提交、推送或部署，运行服务未重启。
+- 统一 reply_image(path) 保存图片快照；Task Review/版本门槛后入 Outbox；iLink 上传、私有媒体引用、续租/有序重试已接入。
+- 截图复用项目 screenshot-reply Skill，短 TMPDIR 修复已用真实空白网页验证；不新增截图原生工具。
+- [规格与核对](../specs/image-delivery/spec.md) · [验证证据](../specs/image-delivery/evidence/README.md) · [启用与排障](../runbook/image-replies.md)。
+- 下一步：服务加载新代码后，在明确测试范围验证实际宿主桌面权限及真实微信可打开图片。已登录网页会话与媒体 TTL/远端去重仍有外部边界。
 
 ## W-001 项目自动维护
 

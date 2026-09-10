@@ -76,6 +76,15 @@ export function buildTraceSpans(events: TraceEvent[], turnStatus: string): Trace
       const span = make(`management:${spans.length}`, "模型管理", "event", at);
       span.end = at; span.status = data.status === "failed" ? "failed" : "succeeded"; span.input = data.command; span.output = data.response; span.events.push(event); continue;
     }
+    if (kind === "image_selected" || kind === "image_delivery") {
+      const id = typeof data.eventId === "string" ? data.eventId : `image:${spans.length}`;
+      let span = files.get(id);
+      if (!span) { span = make(id, kind === "image_selected" ? "登记回复图片（未发送）" : data.stage === "upload" ? "上传回复图片" : "发送回复图片", "image", at); files.set(id, span); }
+      span.output = data; span.events.push(event);
+      span.status = data.status === "started" ? "running" : data.status === "failed" ? "failed" : "succeeded";
+      if (data.status !== "started") span.end = at;
+      continue;
+    }
     if (kind.startsWith("file_")) {
       const labels: Record<string,string> = { file_save: "保存文件", file_upload: "上传文件", file_selected: "选择文件", file_input: "附加文件输入", file_error: "文件处理失败" };
       const key = `${kind}:${typeof data.eventId === "string" ? data.eventId : typeof data.fileId === "string" ? data.fileId : String(event.ordinal)}`;

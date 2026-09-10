@@ -6,3 +6,7 @@ export * from "./ports/file-storage.js";
 export * from "./ports/model-file-input.js";
 export * from "./ports/user-file-repository.js";
 export * from "./application/file-library-service.js";
+export * from "./domain/image-artifact.js";
+export * from "./ports/image-artifact-repository.js";
+export * from "./ports/image-storage.js";
+export * from "./application/image-reply-service.js";

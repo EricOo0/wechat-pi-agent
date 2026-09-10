@@ -8,6 +8,7 @@
   "lifecycle": "planned",
   "affects": [],
   "changes": [
+    "F-002",
     "H-001"
   ],
   "effective": null

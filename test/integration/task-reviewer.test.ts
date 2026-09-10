@@ -22,6 +22,9 @@ it('uses an independent tool-free model call and separate binding for Review at 
     const send: Provider['streamSimple'] = (m, context, options) => {
       calls++; expect(context.tools).toEqual([]); expect(options?.maxRetries).toBe(0);
       expect(context.systemPrompt).toContain('Independently review');
+      const payload = JSON.parse(context.messages[0]!.content as string) as { attachments: unknown[]; completion: { progress: string } };
+      expect(payload.attachments).toMatchObject([{ id: 'image-fixture', mimeType: 'image/png' }]);
+      expect(payload.completion.progress).toBe('done');
       const response: AssistantMessage = { role: 'assistant', api: m.api, provider: m.provider, model: m.id,
         content: [{ type: 'text', text: JSON.stringify({ decision: 'approved', reason: 'fixture checked', gaps: [], finalResult: 'final' }) }], stopReason: 'stop', timestamp: Date.now(),
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
@@ -31,7 +34,7 @@ it('uses an independent tool-free model call and separate binding for Review at 
     const models = new ModelManagement(new PiModelCatalog(runtime), selections, { providerId: 'review-fixture', modelId: 'model', revision: 0 });
     const gate = new ProviderRequestGate(); const reviewer = new PiTaskReviewer(runtime, models, gate);
     const task: Task = { id: 'task', ownerId: 'owner', conversationId: 'session', goal: 'fixture', revision: 1, status: 'REVIEWING', progress: 'done', evidence: [], reactLimit: 30, reactUsed: 30, reviewCount: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    expect(await reviewer.review({ id: 'completion', task, inputs: [], outcome: { disposition: 'request_completion', progress: 'done', remaining: '', evidence: [], result: 'final' }, evidence: [], signal: new AbortController().signal, emit: () => {} })).toMatchObject({ decision: 'approved', finalResult: 'final' });
+    expect(await reviewer.review({ id: 'completion', task, inputs: [], outcome: { disposition: 'request_completion', progress: 'done', remaining: '', evidence: [], result: 'final' }, evidence: [], attachments: [{ id: 'image-fixture', mimeType: 'image/png', width: 1280, height: 720, bytes: 4000, createdAt: new Date().toISOString() }], signal: new AbortController().signal, emit: () => {} })).toMatchObject({ decision: 'approved', finalResult: 'final' });
     expect(calls).toBe(1); expect(task.reactUsed).toBe(30); expect(gate.activeCount('review-fixture')).toBe(0);
     expect(selections.findBinding('review:completion', 'owner')?.providerId).toBe('review-fixture');
   } finally { selections.close(); control.close(); rmSync(root, { recursive: true, force: true }); }

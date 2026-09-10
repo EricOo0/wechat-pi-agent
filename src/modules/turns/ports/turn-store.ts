@@ -8,6 +8,7 @@ export interface CompleteTurnInput {
   turnId: string;
   finalResponse: string;
   chunks: readonly string[];
+  imageIds?: readonly string[];
   piSessionId?: string;
   piSessionFile?: string;
   continuation?: { permissionRequestId: string; sourceTurnId: string };

@@ -22,7 +22,7 @@ describe("DeliverReply", () => {
       outboxId: "outbox-1",
       remoteRequestId: "remote-1",
     });
-    expect(markOutboxSent).toHaveBeenCalledWith("outbox-1", "remote-1");
+    expect(markOutboxSent).toHaveBeenCalledWith("outbox-1", "remote-1", { ownerId: "worker", attemptNo: 1 });
   });
 
   it("schedules exponential retry after a send failure", async () => {
@@ -46,6 +46,7 @@ describe("DeliverReply", () => {
       error,
       new Date(now.getTime() + 10_000),
       4,
+      { ownerId: "worker", attemptNo: 3 },
     );
   });
 });
