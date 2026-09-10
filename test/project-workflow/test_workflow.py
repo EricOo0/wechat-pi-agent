@@ -140,10 +140,12 @@ class WorkflowTest(unittest.TestCase):
             def communicate(self, *args, **kwargs):
                 self.calls += 1
                 if self.calls == 1:
-                    raise subprocess.TimeoutExpired('codex', 180)
+                    if kwargs.get('timeout') != 600:
+                        raise AssertionError('Review timeout must be 10 minutes')
+                    raise subprocess.TimeoutExpired('codex', 600)
                 return '', ''
         with patch.object(w.subprocess, 'Popen', return_value=TimedOut()), patch.object(w.os, 'killpg') as kill:
-            with self.assertRaisesRegex(ValueError, '180 秒'):
+            with self.assertRaisesRegex(ValueError, '600 秒'):
                 w.review(self.root, self.root, 'diff', self.root / 'output.json')
             kill.assert_called_once_with(123456, w.signal.SIGTERM)
 

@@ -8,3 +8,5 @@
 - [4 个 Skill 与暂存指纹校验](skills-and-staged-evidence-2026-09-10.json)
 
 上述是实际本地运行结果；版本比对使用 git show 读取暂存文件并计算 SHA256，全部匹配。只读审查可自行用哈希工具复核，不需要重新运行测试。
+
+- [每阶段 600 秒超时回归](timeout-600-tests.txt) · [对应版本](timeout-600-tests.json)

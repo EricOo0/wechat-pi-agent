@@ -53,7 +53,7 @@
 ## Git pre-commit
 
 1. 读取实际 Git index，复制普通暂存文件到临时快照；不复制工作区未暂存内容，不跟随符号链接。
-2. 先独立调用 codex exec 执行 project-spec-review，再调用 project-change-sync；各阶段最多 180 秒。均为只读沙箱，忽略用户配置及规则，关闭子进程 Hook。
+2. 先独立调用 codex exec 执行 project-spec-review，再调用 project-change-sync；各阶段最多 600 秒。均为只读沙箱，忽略用户配置及规则，关闭子进程 Hook。
 3. 只接受 README 与 docs/specs、docs/changelog、docs/architecture 的 Markdown；不接受 source、Hook、Runbook/Wiki 或 history/evidence/archive 修改。
 4. 在临时树上验证链接、规格字段、关系和地图；确认 HEAD/index/规则未变，目标文件没有未暂存修改，才应用到工作区。
 5. 有修改则停止本次提交，要求开发 Agent 或用户核对并暂存。无修改或下一次暂存树与已检查结果完全一致时允许提交。

@@ -15,7 +15,7 @@ Skill 位于 `.agents/skills/`，新会话可发现；`$project-spec` 只手动�
 - 写规格：`$project-spec`，然后按该 Skill 维护目标专题。
 - 生成地图与反向关系：`python3 scripts/project-workflow/workflow.py specs-sync`。
 - 检查：`python3 scripts/project-workflow/workflow.py check`。
-- 提交时先自动运行 `project-spec-review`，再运行 `project-change-sync`：只分析暂存树，每阶段最长 180 秒（总计最多约 6 分钟，另有终止收尾），使用现有 Codex 认证。未命中缓存时有两次模型调用。
+- 提交时先自动运行 `project-spec-review`，再运行 `project-change-sync`：只分析暂存树，每阶段最长 600 秒（总计最多约 20 分钟，另有终止收尾），使用现有 Codex 认证。未命中缓存时有两次模型调用。
 - 核对完成会生成 spec 专题下的 reviews 报告、索引及 spec 入口；这些修改与普通文档一样需核对并暂存。纯排版等不涉及规格时不强制生成报告。
 - 若 Hook 补写了文档，本次提交停止。核对并暂存这些文档后重新提交；不会自动 git add、commit、push。
 - 收尾经验：当前 Agent 执行 project-learning-sync，可按需写 Runbook/Wiki。完成后 `python3 scripts/project-workflow/workflow.py learning-ack`；默认用 CODEX_THREAD_ID，无该变量时提供 `--session <当前session_id>`。

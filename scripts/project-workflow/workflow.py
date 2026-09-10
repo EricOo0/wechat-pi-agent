@@ -239,7 +239,7 @@ def review(root, snap, diff, output, *, spec_mode=False):
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                             text=True, env=env, start_new_session=True)
     try:
-        _, err = proc.communicate(prompt, timeout=180)
+        _, err = proc.communicate(prompt, timeout=600)
     except subprocess.TimeoutExpired:
         os.killpg(proc.pid, signal.SIGTERM)
         try:
@@ -247,7 +247,7 @@ def review(root, snap, diff, output, *, spec_mode=False):
         except subprocess.TimeoutExpired:
             os.killpg(proc.pid, signal.SIGKILL)
             proc.communicate()
-        raise ValueError('codex exec 超时（180 秒）；本次未修改或暂存文件')
+        raise ValueError('codex exec 超时（600 秒）；本次未修改或暂存文件')
     if proc.returncode:
         # Do not expose raw auth/tool output in Git's error message.
         raise ValueError(f'codex exec 失败（{proc.returncode}），请检查 Codex 登录/服务状态；未自动放行')
@@ -466,13 +466,13 @@ def pre_commit(root):
             diff = git(root, 'diff', '--cached', '--no-ext-diff', '--no-textconv', '--no-color', '--', '.', ':!package-lock.json').decode(errors='replace')
             if len(diff.encode()) > 1_000_000:
                 raise ValueError('暂存差异超过 1 MiB，请拆分提交；未截断后放行')
-            print('提交前正在用 codex exec 检查文档，最长 180 秒……', flush=True)
+            print('提交前正在用 codex exec 检查文档，最长 600 秒……', flush=True)
             audit = spec_review(root, snap, diff, Path(folder) / 'spec-result.json')
             generated, blockers = audit_edits(root, snap, audit, stamp, entries)
             if blockers:
                 raise ValueError('规格核对未通过，未修改规格；报告见 ' + str(state_dir(root) / 'spec-review.md')
                                  + '\n' + '\n'.join(map(str, blockers)))
-            print('规格核对完成，开始文档同步（最长 180 秒）……', flush=True)
+            print('规格核对完成，开始文档同步（最长 600 秒）……', flush=True)
             result = review(root, snap, diff + '\n\n前置规格核对结果（不可改写）：\n' + json.dumps(audit, ensure_ascii=False), Path(folder) / 'result.json')
             result['edits'] = merge_sync_edits(snap, audit, result.get('edits', []), generated)
             changed = apply_review(root, entries, result, snap, stamp)
