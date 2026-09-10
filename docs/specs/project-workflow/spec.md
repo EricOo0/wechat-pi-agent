@@ -4,7 +4,7 @@
   "title": "项目规格与知识维护自动化",
   "kind": "feature",
   "maturity": "experimental",
-  "status": "implementing",
+  "status": "implemented",
   "lifecycle": "planned",
   "affects": [],
   "changes": [],
@@ -40,7 +40,7 @@
 | id / title | 稳定、全库唯一 ID 与标题 |
 | kind | feature / patch / sunset |
 | maturity | experimental / stable，独立于变更类型 |
-| status | draft / accepted / implementing / effective / abandoned |
+| status | draft / accepted / implementing / implemented / effective / abandoned |
 | lifecycle | planned / active / deprecated / retired |
 | affects | `[{"id":"F-001","sections":["F-001-2"]}]`；patch/sunset 必填 |
 | changes | 对影响本规格的变更 ID 的回指，由 specs-sync 自动维护 |
@@ -58,13 +58,13 @@
 4. 在临时树上验证链接、规格字段、关系和地图；确认 HEAD/index/规则未变，目标文件没有未暂存修改，才应用到工作区。
 5. 有修改则停止本次提交，要求开发 Agent 或用户核对并暂存。无修改或下一次暂存树与已检查结果完全一致时允许提交。
 
-前置核对输出 stage（incremental/completion/not_applicable）、覆盖范围和逐条 conforms/missing/deviates/unverified/not_applicable 结论，含代码与验证依据。明确阶段交付可保留记录中的未完成项；声明完成范围内 missing/deviates/unverified 阻断。新增回归或未接受偏差即使阶段提交也应放入 blockers。
+前置核对输出 stage（incremental/completion/not_applicable）、覆盖范围和逐条 conforms/missing/deviates/unverified/not_applicable 结论，含代码与验证依据。明确阶段交付可保留记录中的未完成项；声明完成范围内 missing/deviates 和本地 unverified 阻断，外部验收按 verification_scope 规则处理。新增回归或未接受偏差即使阶段提交也应放入 blockers。
 
 deviates 在所有交付阶段均强制阻断；接受设计变化时先修改并确认规格，再重新核对。未暂存的检查器、Skill 或 Hook 规则会在模型调用前拒绝；模型提示词和 schema 从暂存快照读取。
 
 成功或允许阶段提交的核对报告由脚本生成到 docs/specs/<topic>/reviews/<暂存指纹>.md，并维护 reviews/README.md；spec 顶部只自动插入该索引链接。报告保存 HEAD、暂存/规则指纹和插入导航前的规格内容 SHA256；与最终预计暂存树匹配的缓存才可放行。代码、规格或检查规则变化会重新核对。
 
-失败报告保存在 Git 私有目录 project-workflow/spec-review.md 和 spec-review.json，供当前开发任务定位；失败时不改 spec、不执行文档同步。后置文档同步不能改写 spec 正文或 reviews；如需改变要求，应在开发任务中明确变更并重新核对，不能自动用现有代码覆盖规格。
+失败报告保存在 Git 私有目录 project-workflow/spec-review.md 和 spec-review.json，供当前开发任务定位；失败时不改 spec、不执行文档同步。后置文档同步不能改写 spec 正文或 reviews；仅当核对给出 implementation_ready=true 且无 missing/deviates 时，允许将 implementing 晋升为 implemented，其他字段及正文必须不变，地图由脚本同步；如需改变要求，应在开发任务中明确变更并重新核对，不能自动用现有代码覆盖规格。
 
 缓存绑定 HEAD、暂存文件模式/对象 ID、检查器与 Skill 版本。子进程禁止递归提交，锁防并发重复调用；超时、认证失败和无效输出明确失败，不自动放行。不截断过大的 diff 后假称审查完成：超过 1 MiB 要求拆分提交。package-lock 不作为语义 diff，但仍包含在快照与缓存标识中。
 
@@ -87,5 +87,17 @@ Hook 不读取或解析不稳定的会话 transcript。无初始化记录的新�
 - W-001-5：Stop 对普通未改动任务不追加轮次；开发任务最多兜底一次；ack 后直接结束；不覆盖其他全局 Hook。
 - W-001-6：失败/超时/递归提交不放行；错误不泄露原始认证日志。安装不覆盖既有 hooksPath 或原生 pre-commit。
 - W-001-7：前置核对失败时不调用同步；completion 的遗漏/偏差/验证缺口阻断；incremental 的缺口保存在版本化报告。后置同步无法改写要求或报告；改动使旧核对失效。
+- W-001-8：实现与本地验证齐备后可在提交前晋升 implemented；只修改 status 并同步地图，无前置就绪依据或夹带要求修改则拒绝；不要求或推断发布状态。
 
 适用条件：Python 3.10+、Git、可运行且已登录的 Codex CLI。当前本机版本在交付记录中登记。安装及故障处理见 [操作说明](../../runbook/project-workflow.md)，验证证据见 changelog。
+
+
+## implemented 的更新时机
+
+实现与必要本地检查完成 → project-spec-review 核对 → project-change-sync 更新 implemented → 暂存并提交。不是 commit/push 后才修改，也不是 commit 成功就无条件完成。
+
+implemented 表示整份规格的代码实现完成且本地验证通过；局部阶段或本地证据不足保持 implementing。部署/真实账号待验收单列，effective 仍须发布版本、时间和证据。Hook 用 implementation_ready 接收前置判断，允许严格的状态单字段晋升并生成地图；其他要求不变。
+
+核对报告的 stage 与实现状态分别表达范围：整份交付仍有明确外部验收项时报告可为 incremental，但只有本地实现范围全部满足才能 implementation_ready=true。不能将未完成代码或本地验证缺口当作外部验收。
+
+验证范围结构化为 verification_scope=local/external。实现就绪且未声明 effective 时，completion 报告允许明确的 external/unverified 待验收；本地缺口仍阻断完成，任何阶段本地 unverified 都不得晋升 implemented。effective 的外部未验证仍阻断。此规则区分实现完成与发布，不允许重新标注本地缺口绕过验证。

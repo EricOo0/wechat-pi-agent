@@ -26,7 +26,8 @@
         "additionalProperties": false,
         "required": [
           "path",
-          "findings"
+          "findings",
+          "implementation_ready"
         ],
         "properties": {
           "path": {
@@ -42,7 +43,8 @@
                 "status",
                 "code",
                 "verification",
-                "reason"
+                "reason",
+                "verification_scope"
               ],
               "properties": {
                 "requirement": {
@@ -66,9 +68,19 @@
                     "unverified",
                     "not_applicable"
                   ]
+                },
+                "verification_scope": {
+                  "type": "string",
+                  "enum": [
+                    "local",
+                    "external"
+                  ]
                 }
               }
             }
+          },
+          "implementation_ready": {
+            "type": "boolean"
           }
         }
       }

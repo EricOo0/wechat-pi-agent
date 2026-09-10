@@ -29,7 +29,7 @@ Skill 位于 `.agents/skills/`，新会话可发现；`$project-spec` 只手动�
 | codex exec 失败或超时 | 检查本机 Codex 登录/服务状态，重试；脚本不会输出原始认证日志，也不会因失败放行 |
 | 规格回指或地图过期 | 执行 specs-sync，检查生成内容并暂存；它不会替你判定功能已上线 |
 | 规格核对未通过 | 按提示读取 Git 私有目录中的 spec-review.md；补实现/验证或明确规格变更，不直接改报告放行 |
-| 后置同步建议改写规格 | 在当前开发任务明确变更原因和接受依据，再修改 spec 并重新提交；Hook 不会自动修改要求消除偏差 |
+| 后置同步建议改写规格 | 在当前开发任务明确变更原因和接受依据，再修改 spec 并重新提交；Hook 不会自动修改要求消除偏差；仅允许根据前置就绪结论单独晋升 implemented |
 | Hook 未执行 | 检查 git config --get core.hooksPath、Codex /hooks 的启用与信任状态；更改配置后重新打开会话 |
 | 锁残留 | 用 git rev-parse --git-path project-workflow/commit.lock 定位，读取 PID 并确认进程已结束后只删除该锁，再重试；不要杀正常运行检查 |
 | Stop 没有继续轮次 | 无新改动/非开发请求、已 ack、已兜底或未初始化会话均会跳过；可显式调用 learning Skill |
@@ -45,3 +45,5 @@ Skill 位于 `.agents/skills/`，新会话可发现；`$project-spec` 只手动�
 Git Hook 可被原生 --no-verify 绕过，不是安全边界。本轮未接入 CI；接入后使用同一个 check 命令。图像重绘、发布事实判断、外部副作用核对仍需实际证据，不由文档检查器保证。
 
 参考：[Codex Hooks](https://learn.chatgpt.com/docs/hooks)、[Skills](https://learn.chatgpt.com/docs/build-skills)。
+
+代码和本地验证完成后，在提交前同步 implemented；无需等 push。Hook 若补写状态/地图，核对并暂存后再提交。implemented 不等于 effective，部署/真实账号验收仍需明确证据。

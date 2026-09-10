@@ -9,7 +9,7 @@
 ## R-001 系统架构重构
 
 - 优先顺序：先于 H-001 Harness。
-- 状态：本地重构已实施，正在完成最终条款核对与验证；未提交、推送或部署。
+- 状态：implemented。本地重构与 123 个测试等检查已完成，已提交并推送 e3e934f；未部署，真实运行验收待完成。
 - [R-001 规格](../specs/system-refactor/spec.md) · [功能覆盖](../specs/system-refactor/coverage.md) · [逐文件归属](../specs/system-refactor/source-map.md)
 - 已确认：先理清全系统职责，按领域模块组织，业务流程使用普通应用服务与明确状态转换；适配层负责外部协议和存储映射。
 - 实施：引擎/Pi/事务接口决策已落实，见 [记录](r001/implementation.md)。真实微信/认证/模型输入验收单列，不以本地测试代替。

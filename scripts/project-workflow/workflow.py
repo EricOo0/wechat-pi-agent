@@ -96,12 +96,15 @@ def snapshot(root, entries, dest):
 
 
 def metadata(path):
-    text = path.read_text()
+    return parse_metadata(path.read_text())
+
+
+def parse_metadata(text):
     if not text.startswith('---\n'):
         return None, text
     end = text.find('\n---', 4)
     if end < 0:
-        raise ValueError(f'{path}: frontmatter 未闭合')
+        raise ValueError('frontmatter 未闭合')
     # JSON is a YAML subset: no optional parser dependency in hooks.
     data = json.loads(text[4:end])
     return data, text[end + 4:].lstrip('\n')
@@ -124,7 +127,7 @@ def specs(root):
             raise ValueError(f'{ident}: invalid kind')
         if meta.get('maturity') not in ('experimental', 'stable'):
             raise ValueError(f'{ident}: invalid maturity')
-        if meta.get('status') not in ('draft', 'accepted', 'implementing', 'effective', 'abandoned'):
+        if meta.get('status') not in ('draft', 'accepted', 'implementing', 'implemented', 'effective', 'abandoned'):
             raise ValueError(f'{ident}: invalid status')
         if meta.get('lifecycle') not in ('planned', 'active', 'deprecated', 'retired'):
             raise ValueError(f'{ident}: invalid lifecycle')
@@ -278,23 +281,35 @@ def audit_edits(root, snap, audit, stamp, entries):
             raise ValueError('规格核对引用了不存在或重复的规格')
         seen.add(name)
         findings = item.get('findings')
+        if not isinstance(item.get('implementation_ready'), bool):
+            raise ValueError('规格核对缺少 implementation_ready 判断')
         if not isinstance(findings, list) or not findings:
             raise ValueError('规格核对缺少条款')
         text = (snap / name).read_text()
-        lines = summary + [f'规格：{name}', f'规格 SHA256：{hashlib.sha256(text.encode()).hexdigest()}', '',
+        lines = summary + [f'规格：{name}', f'规格 SHA256：{hashlib.sha256(text.encode()).hexdigest()}',
+                           f"实现就绪：{item['implementation_ready']}", '',
                            '| 条款 | 结论 | 代码依据 | 验证依据 | 原因及处置 |', '|---|---|---|---|---|']
         for finding in findings:
             if not isinstance(finding, dict) or not all(isinstance(finding.get(k), str) and finding[k].strip()
-                                                      for k in ('requirement', 'status', 'code', 'verification', 'reason')):
+                                                      for k in ('requirement', 'status', 'code', 'verification', 'verification_scope', 'reason')):
                 raise ValueError('条款核对字段不完整')
+            if finding['verification_scope'] not in ('local', 'external'):
+                raise ValueError('未知验证范围')
             status = finding['status']
             if status not in ('conforms', 'missing', 'deviates', 'unverified', 'not_applicable'):
                 raise ValueError('未知核对结论')
-            if status == 'deviates' or (audit['stage'] == 'completion' and status in ('missing', 'unverified')):
+            spec_meta, _ = parse_metadata(text)
+            external_pending = (finding['verification_scope'] == 'external'
+                                and item['implementation_ready'] is True
+                                and (spec_meta or {}).get('status') != 'effective')
+            if status == 'deviates' or (audit['stage'] == 'completion' and
+                    (status == 'missing' or (status == 'unverified' and not external_pending))):
                 blockers.append(name + ': ' + finding['requirement'] + ' ' + status)
             def cell(value):
                 return value.replace('|', '\\|').replace('\n', '<br>')
-            lines.append('| ' + ' | '.join(cell(finding[k]) for k in ('requirement', 'status', 'code', 'verification', 'reason')) + ' |')
+            values = [finding['requirement'], finding['status'], finding['code'],
+                      finding['verification_scope'] + ': ' + finding['verification'], finding['reason']]
+            lines.append('| ' + ' | '.join(cell(value) for value in values) + ' |')
         lines += ['', '这是对应暂存版本的静态核对记录；不等同运行测试或上线验收。', '']
         folder = PurePosixPath(name).parent / 'reviews'
         report = str(folder / (stamp[:16] + '.md'))
@@ -313,6 +328,50 @@ def audit_edits(root, snap, audit, stamp, entries):
     report_text = '\n\n'.join(e['content'] for e in edits if e['path'].endswith(stamp[:16] + '.md'))
     (state_dir(root) / 'spec-review.md').write_text((report_text or '\n'.join(summary)) + '\n\n阻断项：\n' + '\n'.join(map(str, blockers)))
     return edits, blockers
+
+
+def merge_sync_edits(snap, audit, proposed, generated):
+    """Only an audited status promotion may change a frozen spec after review."""
+    reviews = {item['path']: item for item in audit['specs']}
+    generated_by_path = {edit['path']: dict(edit) for edit in generated}
+    output = {}
+    promoted = set()
+    for edit in proposed:
+        name = edit.get('path', '')
+        if name in output:
+            raise ValueError('重复文档修改')
+        if name.startswith('docs/specs/') and PurePosixPath(name).name != 'MAP.md':
+            original = snap / name
+            before, body = metadata(original) if original.is_file() else (None, '')
+            try:
+                after, new_body = parse_metadata(edit.get('content', ''))
+            except (ValueError, TypeError):
+                after, new_body = None, ''
+            item = reviews.get(name, {})
+            findings = item.get('findings', [])
+            if (not before or not after or before.get('status') != 'implementing'
+                    or after != {**before, 'status': 'implemented'} or body != new_body
+                    or item.get('implementation_ready') is not True
+                    or not any(f['status'] == 'conforms' for f in findings)
+                    or any(f['status'] in ('missing', 'deviates') or
+                           (f['status'] == 'unverified' and f.get('verification_scope') != 'external') for f in findings)):
+                raise ValueError('文档同步越界：改写规格仅允许有核对依据的 implementing → implemented；要求正文与其他字段必须不变')
+            if name in generated_by_path:
+                _, linked_body = parse_metadata(generated_by_path.pop(name)['content'])
+                edit = {'path': name, 'content': '---\n' + json.dumps(after, ensure_ascii=False, indent=2) + '\n---\n\n' + linked_body}
+            promoted.add(name)
+        output[name] = edit
+    for name, edit in generated_by_path.items():
+        if name in output:
+            raise ValueError('不能覆盖前置核对报告')
+        output[name] = edit
+    if promoted:
+        found = specs(snap)
+        for path, meta, _ in found.values():
+            if path.relative_to(snap).as_posix() in promoted:
+                meta['status'] = 'implemented'
+        output['docs/specs/MAP.md'] = {'path': 'docs/specs/MAP.md', 'content': spec_map(snap, found)}
+    return list(output.values())
 
 
 def apply_review(root, entries, result, snap, initial_token):
@@ -415,12 +474,7 @@ def pre_commit(root):
                                  + '\n' + '\n'.join(map(str, blockers)))
             print('规格核对完成，开始文档同步（最长 180 秒）……', flush=True)
             result = review(root, snap, diff + '\n\n前置规格核对结果（不可改写）：\n' + json.dumps(audit, ensure_ascii=False), Path(folder) / 'result.json')
-            # The second agent cannot alter requirements or its predecessor's report.
-            for edit in result.get('edits', []):
-                name = edit.get('path', '')
-                if name.startswith('docs/specs/') and (PurePosixPath(name).name != 'MAP.md'):
-                    raise ValueError('文档同步越界：建议改写规格或核对记录；请先明确变更要求并重新核对，未自动改写')
-            result['edits'] = result.get('edits', []) + generated
+            result['edits'] = merge_sync_edits(snap, audit, result.get('edits', []), generated)
             changed = apply_review(root, entries, result, snap, stamp)
             if changed:
                 raise ValueError('已更新文档，未暂存；请核对并暂存后重新提交：\n' + '\n'.join(changed))

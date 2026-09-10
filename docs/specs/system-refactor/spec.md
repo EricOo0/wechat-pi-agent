@@ -4,7 +4,7 @@
   "title": "系统模块化与工作流重构",
   "kind": "feature",
   "maturity": "stable",
-  "status": "implementing",
+  "status": "implemented",
   "lifecycle": "planned",
   "affects": [],
   "changes": [],
@@ -16,7 +16,7 @@
 
 # R-001：系统模块化与工作流重构规格
 
-本文是 R-001 的唯一规格正文，合并目标、结构设计、边界和验收要求；不另维护重复的 design.md。已确认按本规格的架构方向整理，业务重构已开始，分阶段验证。当前覆盖现有 WeChat × Pi Agent；Harness 在重构完成后另行扩展。具体引擎选择仍按第 12 节决策。
+本文是 R-001 的唯一规格正文，合并目标、结构设计、边界和验收要求；不另维护重复的 design.md。已确认按本规格的架构方向整理，本地代码重构与自动化验证已完成，已提交并推送 e3e934f；真实运行验收仍待完成。当前覆盖现有 WeChat × Pi Agent；Harness 在重构完成后另行扩展。当前流程范围见第 12 节已确认决策。
 
 [开发状态](../../changelog/planned.md) · [功能覆盖表](coverage.md) · [逐文件迁移归属](source-map.md) · [图像提示词](../../architecture/proposals/system-refactor/assets/architecture.prompt.txt)
 

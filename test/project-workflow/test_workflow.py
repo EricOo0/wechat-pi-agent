@@ -216,8 +216,8 @@ class WorkflowTest(unittest.TestCase):
         w.check_specs(self.root, sync=True)
         self.git('add', 'docs/specs')
         return {'stage': stage, 'scope_reason': 'F-001-1 only', 'blockers': [], 'specs': [{
-            'path': 'docs/specs/F-001/spec.md', 'findings': [{'requirement': 'F-001-1',
-            'status': status, 'code': 'src/a.txt', 'verification': 'not executed; static review', 'reason': 'fixture evidence'}]}]}
+            'path': 'docs/specs/F-001/spec.md', 'implementation_ready': False, 'findings': [{'requirement': 'F-001-1',
+            'status': status, 'code': 'src/a.txt', 'verification': 'not executed; static review', 'verification_scope': 'local', 'reason': 'fixture evidence'}]}]}
 
     def test_completion_gap_blocks_before_sync_and_keeps_failure_report(self):
         self.audit_mock.return_value = self.audit(status='missing')
@@ -267,6 +267,82 @@ class WorkflowTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '规则有未暂存'):
             w.pre_commit(self.root)
         self.audit_mock.assert_not_called()
+
+    def promotion(self):
+        audit = self.audit()
+        self.make_spec('F-001', status='implementing')
+        w.check_specs(self.root, sync=True)
+        self.git('add', 'docs/specs')
+        audit['specs'][0]['implementation_ready'] = True
+        self.audit_mock.return_value = audit
+        path = self.root / 'docs/specs/F-001/spec.md'
+        return self.result([{'path': 'docs/specs/F-001/spec.md',
+                             'content': path.read_text().replace('"implementing"', '"implemented"')}])
+
+    def test_audited_promotion_updates_map_and_preserves_report_link(self):
+        result = self.promotion()
+        with patch.object(w, 'review', return_value=result):
+            with self.assertRaisesRegex(ValueError, '已更新文档'):
+                w.pre_commit(self.root)
+            meta, body = w.metadata(self.root / 'docs/specs/F-001/spec.md')
+            self.assertEqual(meta['status'], 'implemented')
+            self.assertIn('版本化核对记录', body)
+            self.assertIn('implemented', (self.root / 'docs/specs/MAP.md').read_text())
+            self.git('add', 'docs/specs')
+            w.pre_commit(self.root)
+            self.assertEqual(self.audit_mock.call_count, 1)
+
+    def test_promotion_cannot_change_requirements_or_skip_readiness(self):
+        result = self.promotion()
+        original = result['edits'][0]['content']
+        for ready, content in [(False, original), (True, original + '\nweakened requirement\n')]:
+            self.audit_mock.return_value['specs'][0]['implementation_ready'] = ready
+            result['edits'][0]['content'] = content
+            with patch.object(w, 'review', return_value=result):
+                with self.assertRaisesRegex(ValueError, '改写规格'):
+                    w.pre_commit(self.root)
+            self.assertEqual(w.metadata(self.root / 'docs/specs/F-001/spec.md')[0]['status'], 'implementing')
+
+    def test_local_unverified_cannot_promote_even_if_ready_true(self):
+        result = self.promotion()
+        self.audit_mock.return_value['stage'] = 'incremental'
+        self.audit_mock.return_value['specs'][0]['findings'].append({
+            'requirement': 'F-001-2', 'status': 'unverified', 'code': 'src/a.txt',
+            'verification': 'local tests absent', 'verification_scope': 'local', 'reason': 'not validated'})
+        with patch.object(w, 'review', return_value=result):
+            with self.assertRaisesRegex(ValueError, '改写规格'):
+                w.pre_commit(self.root)
+        self.assertEqual(w.metadata(self.root / 'docs/specs/F-001/spec.md')[0]['status'], 'implementing')
+
+    def test_external_acceptance_can_remain_pending_at_implemented(self):
+        result = self.promotion()
+        self.audit_mock.return_value['specs'][0]['findings'].append({
+            'requirement': 'F-001-2', 'status': 'unverified', 'code': 'src/a.txt',
+            'verification': 'production not deployed', 'verification_scope': 'external', 'reason': 'external acceptance pending'})
+        with patch.object(w, 'review', return_value=result):
+            with self.assertRaisesRegex(ValueError, '已更新文档'):
+                w.pre_commit(self.root)
+        self.assertEqual(w.metadata(self.root / 'docs/specs/F-001/spec.md')[0]['status'], 'implemented')
+
+    def test_implemented_does_not_require_or_imply_release(self):
+        self.make_spec('F-001', status='implemented')
+        w.check_specs(self.root, sync=True)
+        self.assertIsNone(w.metadata(self.root / 'docs/specs/F-001/spec.md')[0]['effective'])
+
+    def test_effective_cannot_ignore_external_verification(self):
+        self.promotion()
+        path = self.root / 'docs/specs/F-001/spec.md'
+        meta, body = w.metadata(path)
+        meta.update(status='effective', effective={'version': 'v1', 'date': '2026-09-10', 'evidence': 'docs/README.md'})
+        path.write_text('---\n' + json.dumps(meta) + '\n---\n\n' + body)
+        w.check_specs(self.root, sync=True)
+        self.git('add', 'docs')
+        finding = self.audit_mock.return_value['specs'][0]['findings'][0]
+        finding.update(status='unverified', verification_scope='external')
+        with patch.object(w, 'review') as sync:
+            with self.assertRaisesRegex(ValueError, '规格核对未通过'):
+                w.pre_commit(self.root)
+            sync.assert_not_called()
 
     def test_all_skill_and_hook_policies_are_guarded(self):
         for name in ['.agents/skills/project-spec/SKILL.md', '.agents/skills/project-learning-sync/SKILL.md',

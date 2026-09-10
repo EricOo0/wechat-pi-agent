@@ -1,0 +1,34 @@
+{
+  "command": "python3 -m unittest discover -s test/project-workflow -v",
+  "exit_code": 0,
+  "tests": 30,
+  "recorded_at": "2026-09-10T06:04:09.596691+00:00",
+  "skills": [
+    {
+      "skill": "project-spec",
+      "exit_code": 0,
+      "output": "Skill is valid!"
+    },
+    {
+      "skill": "project-change-sync",
+      "exit_code": 0,
+      "output": "Skill is valid!"
+    },
+    {
+      "skill": "project-spec-review",
+      "exit_code": 0,
+      "output": "Skill is valid!"
+    }
+  ],
+  "sha256": {
+    "scripts/project-workflow/workflow.py": "4808b104c585bd9a2361ef1c1c157b70996bfce3ce08f642637a4096d07e5edc",
+    "scripts/project-workflow/spec-review.schema.json": "3ee3a4a2acc73c816be2ffd190169ac7aa5dadcc6c57dad29a82166bdd69f719",
+    "test/project-workflow/test_workflow.py": "d890884e38fd50feb6e80f337b421aac44719c108a6c67fadcac6ad676e97120",
+    ".agents/skills/project-spec/SKILL.md": "0a149fe6f14834429c19f68597e4b42eb9c620180aca37c051839f97d9738203",
+    ".agents/skills/project-spec/agents/openai.yaml": "a1499d95abd8447558c535fe5554adcc3c9b988a0a39264a6283d430effe1e94",
+    ".agents/skills/project-change-sync/SKILL.md": "124c6d3ad5e878eb8ff14049a89d2ea1d4463cd620bf8df04bb993f940d73349",
+    ".agents/skills/project-change-sync/agents/openai.yaml": "8619a54e8c098122a7f3881394f84ca89b684366e848233a29ad18b6ec363935",
+    ".agents/skills/project-spec-review/SKILL.md": "26e8589cb205ef7310587a467564ee7203627f6f64b201dd6f4371c115fe7c70",
+    ".agents/skills/project-spec-review/agents/openai.yaml": "8619a54e8c098122a7f3881394f84ca89b684366e848233a29ad18b6ec363935"
+  }
+}
